@@ -1,0 +1,289 @@
+"""Tools the LLM may call. Each returns a JSON-serialisable dict.
+
+Guardrails live here, not in the prompt:
+  * read-only DuckDB connection with external file/network access disabled
+  * single SELECT statement only; comments table not reachable from SQL
+  * no response-level output (response_id may not appear in results)
+  * grouped results must carry a count column `n`; cells below MIN_CELL are dropped
+"""
+import json
+import re
+
+import duckdb
+import numpy as np
+import pandas as pd
+
+from . import analysis, config
+from .ingest import load_dictionary
+from .privacy import is_count_col, suppress_small_cells
+
+_FORBIDDEN = re.compile(
+    r"\b(insert|update|delete|drop|create|alter|attach|detach|copy|pragma|install|load|export|"
+    r"import|call|set|read_csv\w*|read_parquet|read_json\w*|glob|comments)\b", re.IGNORECASE)
+
+
+def _con():
+    return analysis.connect()
+
+
+def _df_out(df, hidden=0, note=None):
+    df = df.head(config.MAX_SQL_ROWS)
+    out = {"rows": json.loads(df.to_json(orient="records", date_format="iso")), "row_count": len(df)}
+    if hidden:
+        out["suppressed_rows"] = hidden
+        out["suppression_note"] = f"{hidden} group(s) hidden because n < {config.MIN_CELL}"
+    if note:
+        out["note"] = note
+    return out
+
+
+def describe_data():
+    d = load_dictionary()
+    con = _con()
+    tables = {}
+    for t in ["responses", "ratings", "items", "response_faculty", "response_disability", "response_multi"]:
+        cols = con.execute(f"DESCRIBE {t}").df()
+        tables[t] = [f"{r.column_name} {r.column_type}" for r in cols.itertuples()]
+    services = {v["key"]: v["name"] for v in d["services"].values()}
+    return {
+        "tables": tables,
+        "views": {"ratings_demo": "ratings joined to responses (all demographic columns)"},
+        "services": services,
+        "likert": "score 1-5, " + ", ".join(f"{k}={v}" for k, v in d["likert"]["scale"].items())
+                  + "; agree = score >= 4",
+        "equity_dimensions": analysis.equity_dimensions(d),
+        "faculty_values": d["checkbox"]["faculty"]["choices"],
+        "category_values": {k: v for k, v in _category_values().items()
+                            if k not in ("faculty", "disability") and len(v) <= 12},
+        "data_coverage": {**d.get("coverage", {}), "survey_period": _period()},
+        "rules": [f"Grouped queries must include COUNT(DISTINCT response_id) AS n",
+                  f"Groups with n < {config.MIN_CELL} are removed from results",
+                  "Never select response_id; comments are only reachable via search_comments"],
+    }
+
+
+_LITERAL = re.compile(r"(?:\b\w+\.)?\b(\w+)\s*(?:=|<>|!=)\s*'([^']*)'")
+
+
+def _category_values():
+    """Distinct values of every text column in responses (demographics, follow-ups)
+    plus the multi-select long tables. Used to catch filters on values that don't exist."""
+    con = _con()
+    vals = {}
+    cols = con.execute("DESCRIBE responses").df()
+    for c in cols[cols["column_type"] == "VARCHAR"]["column_name"]:
+        if c in ("response_id", "channel"):
+            continue
+        vals[c] = sorted(con.execute(f'SELECT DISTINCT "{c}" FROM responses WHERE "{c}" IS NOT NULL').df()[c].astype(str))
+    vals["disability"] = sorted(con.execute("SELECT DISTINCT disability FROM response_disability").df()["disability"])
+    vals["faculty"] = sorted(con.execute("SELECT DISTINCT faculty FROM response_faculty").df()["faculty"])
+    vals["service"] = sorted(con.execute("SELECT DISTINCT service FROM ratings").df()["service"])
+    return vals
+
+
+def _check_literals(sql):
+    """Return an error if the query filters a category column on a value it never has
+    (e.g. intl_or_domestic = 'international' when the stored codes are '1'/'2')."""
+    vals = _category_values()
+    for col, lit in _LITERAL.findall(sql):
+        if col in vals and lit not in vals[col] and len(vals[col]) <= 40:
+            shown = ", ".join(f"'{v}'" for v in vals[col])
+            return (f"Value '{lit}' does not exist in column {col}. Valid values: {shown}. "
+                    "Numeric codes are unlabelled answer options: use them as-is and do not "
+                    "guess their meaning.")
+    return None
+
+
+def _period():
+    lo, hi = analysis.period_range(_con())
+    return f"{lo:%Y-%m-%d} to {hi:%Y-%m-%d}" if lo and hi else "unknown"
+
+
+def run_sql(sql: str):
+    s = sql.strip().rstrip(";")
+    if ";" in s:
+        return {"error": "Only one statement is allowed."}
+    if not re.match(r"^\s*(select|with)\b", s, re.IGNORECASE):
+        return {"error": "Only SELECT queries are allowed."}
+    if _FORBIDDEN.search(s):
+        return {"error": f"Query uses a forbidden keyword or table: {_FORBIDDEN.search(s).group(0)}"}
+    bad_value = _check_literals(s)
+    if bad_value:
+        return {"error": bad_value}
+    try:
+        df = _con().execute(s).df()
+    except Exception as e:  # return the DB error so the model can fix its SQL
+        return {"error": f"SQL error: {e}"}
+    if any(c.lower() == "response_id" for c in df.columns):
+        return {"error": "Results may not contain response_id. Aggregate instead."}
+    grouped = re.search(r"\bgroup\s+by\b", s, re.IGNORECASE)
+    if grouped and not any(is_count_col(c) for c in df.columns):
+        return {"error": "Grouped results must include a count column, e.g. COUNT(DISTINCT response_id) AS n."}
+    if not grouped and len(df) > 1 and not any(c.lower() == "n" for c in df.columns):
+        return {"error": "Row-level output is not allowed. Use GROUP BY with a count column n."}
+    count_cols = [c for c in df.columns if is_count_col(c)]
+    label_cols = [c for c in df.columns if c not in count_cols and not pd.api.types.is_numeric_dtype(df[c])]
+    small = pd.Series(False, index=df.index)
+    for c in count_cols:
+        small |= pd.to_numeric(df[c], errors="coerce") < config.MIN_CELL
+    hidden_groups = [", ".join(f"{c}={'(blank)' if pd.isna(r[c]) else r[c]}" for c in label_cols)
+                     for _, r in df[small].iterrows()] if label_cols else []
+    df, hidden = suppress_small_cells(df)
+    out = _df_out(df, hidden)
+    if hidden_groups:
+        out["hidden_groups"] = hidden_groups
+        out["suppression_note"] = (f"{hidden} group(s) hidden because n < {config.MIN_CELL}: "
+                                   + "; ".join(hidden_groups) + ". '(blank)' means the question was not answered.")
+    return out
+
+
+def service_summary(service: str = None):
+    df = analysis.service_summary(_con())
+    return _df_out(df[df["service"] == service] if service else df)
+
+
+def item_summary(service: str):
+    return _df_out(analysis.item_summary(_con(), service),
+                   note="Sorted lowest % agree first.")
+
+
+def compare_groups(dimension: str, service: str = None, item_code: str = None):
+    try:
+        df, hidden_groups = analysis.compare_groups(_con(), dimension, service, item_code)
+    except ValueError as e:
+        return {"error": str(e)}
+    out = _df_out(df, note="Descriptive only (not a significance test).")
+    if hidden_groups:
+        out["hidden_groups"] = hidden_groups
+        out["suppression_note"] = (f"These groups exist but have fewer than {config.MIN_CELL} "
+                                   f"respondents, so their results are hidden: {', '.join(hidden_groups)}")
+    if dimension in analysis.MULTI_DIMENSIONS:
+        out["overlap_note"] = "Respondents can be in several groups; group counts overlap and do not sum."
+    return out
+
+
+def wait_time_vs_rating(service: str):
+    try:
+        df, hidden, stats = analysis.wait_vs_rating(_con(), service)
+    except ValueError as e:
+        return {"error": str(e)}
+    out = _df_out(df, hidden)
+    out["correlation"] = stats
+    out["note"] = ("wait codes are ordered shortest->longest; rho < 0 means longer waits go with "
+                   "lower ratings. Only call it a relationship if p_value < 0.05.")
+    return out
+
+
+def equity_flags(service: str = None, dimension: str = None):
+    tests, flags, thin = analysis.equity_scan(_con(), service)
+    if dimension and len(tests):
+        tests, flags = tests[tests["dimension"] == dimension], flags[flags["dimension"] == dimension]
+    cols = ["service", "dimension", "group", "n_group", "pct_agree_group", "pct_agree_rest", "gap_pts", "q"]
+    return {
+        "comparisons_run": len(tests),
+        "flags": json.loads(flags[cols].round(3).to_json(orient="records")) if len(flags) else [],
+        "groups_too_small_to_compare": len(thin),
+        "method": f"Each group vs everyone else; Mann-Whitney on respondent mean score; "
+                  f"Benjamini-Hochberg q < {config.FDR_Q}; |gap| >= {int(100*config.MIN_GAP_TOP2)} pts; "
+                  f"n >= {config.EQUITY_MIN_GROUP}.",
+    }
+
+
+def search_comments(query: str, service: str = None, k: int = 8):
+    """Semantic search if embeddings exist, else keyword search. Returns text only."""
+    con = _con()
+    k = max(1, min(int(k), 15))
+    has_emb = con.execute("SELECT COUNT(*) FROM information_schema.tables "
+                          "WHERE table_name='comment_embeddings'").fetchone()[0]
+    where = "WHERE c.service = ?" if service else ""
+    params = [service] if service else []
+    if has_emb:
+        from .llm import embed
+        q = np.array(embed([query])[0], dtype=float)
+        df = con.execute(f"""SELECT c.service, c.text, e.vec FROM comments c
+                             JOIN comment_embeddings e USING (response_id, question_code) {where}""", params).df()
+        if df.empty:
+            return {"rows": [], "row_count": 0}
+        m = np.vstack(df["vec"].to_numpy())
+        sims = m @ q / (np.linalg.norm(m, axis=1) * np.linalg.norm(q) + 1e-9)
+        df = df.assign(similarity=sims.round(3)).nlargest(k, "similarity").drop(columns="vec")
+        mode = "semantic"
+    else:
+        words = [w for w in re.findall(r"\w{4,}", query.lower())][:5] or [query.lower()]
+        cond = " OR ".join("lower(c.text) LIKE ?" for _ in words)
+        params += [f"%{w}%" for w in words]
+        df = con.execute(f"""SELECT c.service, c.text FROM comments c
+                             {where + ' AND' if where else 'WHERE'} ({cond}) LIMIT {k}""", params).df()
+        mode = "keyword (run comments.py --embed for semantic search)"
+    return {**_df_out(df), "search_mode": mode,
+            "note": "Quote at most short phrases; never speculate about who wrote a comment."}
+
+
+def comment_overview(service: str = None):
+    con = _con()
+    has = con.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='comment_labels'").fetchone()[0]
+    if not has:
+        return {"error": "Comments not labelled yet. Run: python -m shw_analytics.comments --label"}
+    where = "WHERE c.service = ?" if service else ""
+    params = [service] if service else []
+    sent = con.execute(f"""SELECT l.sentiment, COUNT(*) AS n FROM comment_labels l
+                           JOIN comments c USING (response_id, question_code) {where}
+                           GROUP BY 1 ORDER BY n DESC""", params).df()
+    themes = con.execute(f"""SELECT theme, COUNT(*) AS n FROM (
+                               SELECT UNNEST(l.themes) AS theme FROM comment_labels l
+                               JOIN comments c USING (response_id, question_code) {where})
+                             GROUP BY 1 ORDER BY n DESC""", params).df()
+    return {"sentiment": _df_out(suppress_small_cells(sent)[0])["rows"],
+            "themes": _df_out(suppress_small_cells(themes)[0])["rows"]}
+
+
+# Tool definitions shown to the model, and the name -> function map.
+def _fn(name, desc, props=None, required=None):
+    return {"type": "function", "function": {
+        "name": name, "description": desc,
+        "parameters": {"type": "object", "properties": props or {}, "required": required or []}}}
+
+_SVC = {"type": "string", "description": "service key, e.g. medical, counselling"}
+
+TOOL_SPECS = [
+    _fn("describe_data", "Tables, columns, services, scale and rules. Call first if unsure."),
+    _fn("service_summary", "Respondents, mean score and % agree per service (all, or one).",
+        {"service": _SVC}),
+    _fn("item_summary", "Every survey item for one service with n, mean, % agree (weakest first).",
+        {"service": _SVC}, ["service"]),
+    _fn("compare_groups", "% agree and mean score by group of ONE demographic dimension, "
+        "including faculty (e.g. Arts) and disability type. For two dimensions combined "
+        "(e.g. international AND first-generation), use run_sql on ratings_demo instead.",
+        {"dimension": {"type": "string", "description": "an equity dimension (disability_any = yes/no), "
+                       "or a category breakdown: disability (each disability type), faculty, "
+                       "racial_background; or academic_level, year_of_study, enrollment_status, "
+                       "living_arrangement, new_to_ubc"},
+         "service": _SVC,
+         "item_code": {"type": "string", "description": "optional; omit to use all items"}}, ["dimension"]),
+    _fn("wait_time_vs_rating", "How appointment wait time relates to ratings (medical or counselling).",
+        {"service": _SVC}, ["service"]),
+    _fn("equity_flags", "Statistically tested gaps between demographic groups (FDR-corrected).",
+        {"service": _SVC, "dimension": {"type": "string", "description": "optional equity dimension"}}),
+    _fn("search_comments", "Find open-text comments about a topic.",
+        {"query": {"type": "string"}, "service": _SVC, "k": {"type": "integer"}}, ["query"]),
+    _fn("comment_overview", "Sentiment and theme counts for open-text comments.", {"service": _SVC}),
+    _fn("run_sql", "Run one read-only aggregate SELECT on DuckDB. Use only when no other tool fits. "
+        "Query ratings_demo; % agree = ROUND(100*AVG(CASE WHEN agree THEN 1 ELSE 0 END),1); "
+        "filter categories by the exact codes in category_values.",
+        {"sql": {"type": "string"}}, ["sql"]),
+]
+
+REGISTRY = {"describe_data": describe_data, "service_summary": service_summary,
+            "item_summary": item_summary, "compare_groups": compare_groups,
+            "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating, "search_comments": search_comments,
+            "comment_overview": comment_overview, "run_sql": run_sql}
+
+
+def call(name, args):
+    fn = REGISTRY.get(name)
+    if not fn:
+        return {"error": f"Unknown tool {name}"}
+    try:
+        return fn(**(args or {}))
+    except TypeError as e:
+        return {"error": f"Bad arguments for {name}: {e}"}

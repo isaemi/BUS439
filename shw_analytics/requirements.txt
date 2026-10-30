@@ -1,0 +1,9 @@
+pandas>=2.2
+duckdb>=1.1
+openai>=1.40
+pyyaml>=6
+scipy>=1.11
+numpy>=1.26
+streamlit>=1.36
+altair>=5
+paramiko>=3.2  # only for SFTP sync

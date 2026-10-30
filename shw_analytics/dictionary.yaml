@@ -1,0 +1,106 @@
+# SHW survey data dictionary. This file is the single source of truth for what
+# each code means. The LLM sees a compact version of it, so clear names here
+# matter more than anything else for answer quality.
+#
+# Items marked CONFIRM were inferred from the Oct 27 test export and need a
+# check against the survey (.qsf) or a "choice text" export. Tip: run
+#   python -m shw_analytics.labels numeric.csv choicetext.csv
+# to fill value labels automatically from a pair of exports.
+
+likert:
+  # CONFIRM direction against the survey. Assumed 5 = most positive.
+  scale: {1: Strongly disagree, 2: Disagree, 3: Neutral, 4: Agree, 5: Strongly agree}
+  top2_min: 4            # "% agree" = share of 4s and 5s
+  # Blocks whose Qualtrics recode values are off. WCI1 exports 13-17, not 1-5.
+  recode:
+    WCI1: {13: 1, 14: 2, 15: 3, 16: 4, 17: 5}
+
+service_question: Int1
+services:                 # Int1 code -> service. Block = Likert matrix prefix.
+  3:  {key: medical,      name: Medical,                         block: MED1, comment: MED5}
+  8:  {key: counselling,  name: Counselling,                     block: CS1,  comment: CS4}
+  9:  {key: wellness_adv, name: Wellness Advising,               block: WA1,  comment: WA4}
+  10: {key: info_desk,    name: Wellness Info Desk,              block: WCI1}                 # CONFIRM name
+  11: {key: wellness_ctr, name: Wellness Centre (space & merch),  block: WCS1}                 # CONFIRM name
+  12: {key: naloxone,     name: Naloxone Training,               block: NAL1, comment: NAL2}
+
+general_comment: Comment
+
+# Per-service follow-up questions kept as categorical columns.
+followups:
+  WA2: {name: wa_time_since_first_booking}
+  WA3: {name: wa_fell_short}
+  MED2: {name: med_wait_time}
+  MED3: {name: med_preferred_format}
+  MED4: {name: med_fell_short}
+  CS2: {name: cs_wait_time}
+  CS3: {name: cs_fell_short}
+
+# Demographics. `equity: true` marks the dimensions the equity scan compares.
+# labels are CONFIRM until filled from a choice-text export.
+demographics:
+  D1:  {name: academic_level}
+  D2:  {name: new_to_ubc}
+  D3:  {name: year_of_study}
+  D4:  {name: enrollment_status}
+  D7:  {name: intl_or_domestic, equity: true}
+  D8:  {name: living_arrangement}
+  D9:  {name: indigenous, equity: true}
+  D10: {name: racialized, equity: true}
+  D11: {name: racial_background, multi: true}
+  D12: {name: first_generation, equity: true}
+  D13: {name: gender, equity: true}
+  D14: {name: trans_experience, equity: true}
+  D15: {name: identity_d15, multi: true}        # CONFIRM what D15 measures
+birth_year: {question: D5_1_TEXT, min: 1925}
+
+# Checkbox questions exported as one column per choice (D6_1..D6_26, D16_1..).
+checkbox:
+  faculty:
+    prefix: D6_
+    choices: [Applied Science (Engineering), Applied Science (Nursing),
+      Architecture and Landscape Architecture, Arts, Audiology and Speech Sciences,
+      Business, Community and Regional Planning, Dentistry, Education,
+      Extended Learning, Forestry, Graduate and Postdoctoral Studies,
+      "Journalism, Writing, and Media", Kinesiology, Land and Food Systems, Law,
+      Information (School of), Medicine, Music, Population and Public Health,
+      Public Policy and Global Affairs, Pharmaceutical Sciences, Science,
+      Social Work, UBC Vantage College, Other]
+  disability:
+    prefix: D16_
+    choices: [Chronic health condition, Deaf or hard of hearing, Low or limited vision,
+      Mental health condition, Neurodivergent, Neurological health condition,
+      Physical disability, Not listed, None, Not sure, Prefer not to answer]
+    # derived equity dimension: yes if any of 1-8, no if only "None"
+    derive: {name: disability_any, yes_choices: [1, 2, 3, 4, 5, 6, 7, 8], no_choices: [9], equity: true}
+
+# Never loaded into the database: identifying metadata and "please specify"
+# free text, which is where names and rare identities show up.
+drop_columns: [IPAddress, RecipientLastName, RecipientFirstName, RecipientEmail,
+  ExternalReference, LocationLatitude, LocationLongitude, Int2_11_TEXT, Int2_12_TEXT,
+  D1_6_TEXT, D8_6_TEXT, D9_3_TEXT, D11_8_TEXT, D15_9_TEXT, D16_8_TEXT]
+
+# What the tool can and cannot answer. The model reads this before answering, so
+# update it when a new data source (e.g. CHR exports) is connected.
+coverage:
+  available:
+    - "Student feedback survey (Qualtrics): agreement ratings (1-5) for Medical, Counselling,
+      Wellness Advising, Wellness Info Desk, Wellness Centre and Naloxone Training"
+    - "Survey outcome items, e.g. 'As a result of this appointment, I am better able to...'"
+    - "Wait time before the appointment (Medical and Counselling only; unlabelled categories)"
+    - "Whether the visit fell short; preferred visit format (Medical); open-text comments"
+    - "Respondent demographics: faculty, level and year of study, international/domestic,
+      Indigenous, racialized, racial background, first-generation, gender, trans experience, disability"
+    - "Only students who used a service and chose to respond to the survey"
+  not_yet:
+    - "Appointment counts, visits per student, referrals, no-shows (TELUS CHR records, not connected)"
+    - "Presenting concerns: reason for visit (Medical) and CLICC concerns (Counselling), from CHR"
+    - "Clinician capacity (direct-service hours)"
+    - "Trends over time: the data covers one survey period"
+    - "Barriers for students who did not use services (they are not surveyed)"
+  not_linkable:
+    - "Survey responses cannot be linked to individual appointments. Survey and CHR data can
+      only be compared by shared groups such as faculty and term."
+
+# Optional value labels: {question: {code: label}}. Empty until confirmed.
+value_labels: {}

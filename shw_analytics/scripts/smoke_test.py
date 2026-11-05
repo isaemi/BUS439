@@ -71,6 +71,65 @@ second = sftp_sync.sync(_FakeSFTP(), "/drop", _out, prefix="shw_survey")
 results.append(ok(len(first) == 2 and not second and len(list(_out.glob("*.csv"))) == 2,
                   "SFTP sync copies new exports once, unzips, skips other files"))
 
+# Schema: every table column has a description in the database, and joins are listed.
+from shw_analytics import schema  # noqa: E402
+_s = schema.describe(analysis.connect())
+_undocumented = [f"{t}.{c.split()[0]}" for t, v in _s["tables"].items() for c in v["columns"] if ": " not in c]
+results.append(ok(not _undocumented and len(_s["relationships"]) >= 5,
+                  f"schema documented in the database (undocumented: {_undocumented or 'none'})"))
+
+# CHR: the real export sample parses to one appointment with no names kept; a synthetic
+# export loads, the planted graduate-student pattern is found and explained, and IDs
+# can't be pulled out through SQL.
+from shw_analytics import chr as chr_  # noqa: E402
+_d = ingest.load_dictionary()
+_real = Path(__file__).resolve().parent.parent / "docs" / "chr_sample_export.csv"
+if _real.exists():
+    _a, _iss = chr_.read_exports([_real], _d)
+    results.append(ok(len(_a) == 1 and "practitioner" not in _a.columns
+                      and not _a["location"].str.contains(r"\(", na=False).any(),
+                      f"CHR sample export: {len(_a)} appointment, names removed"))
+import subprocess  # noqa: E402
+_chr_dir = tmp / "chr"
+subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "make_synthetic_chr.py"),
+                "--students", "1500", "--out", str(_chr_dir / "synthetic_chr.csv")], check=True,
+               capture_output=True)
+_con = duckdb.connect(str(config.DB_PATH))
+chr_.add_tables(_con, _d, _chr_dir)
+from shw_analytics.schema import apply_comments  # noqa: E402
+apply_comments(_con, _d)
+_con.close()
+_x = tools.explain_difference("academic_level", "Graduate", service_line="Counselling")
+_vps = next(m for m in _x["measures"] if m["measure"] == "Visits per student")
+_svc = next(m for m in _x["measures"] if m["measure"] == "Services used per student")
+results.append(ok(_vps["significant"] and _vps["ratio"] > 1.4 and not _svc["significant"]
+                  and "SYNTHETIC" in _x["data_source"],
+                  f"explain_difference finds the planted pattern: {_x['decomposition']['summary']}"))
+results.append(ok("error" in tools.run_sql("SELECT student_key, COUNT(*) AS n FROM appointments GROUP BY 1"),
+                  "SQL guard blocks anonymised IDs in output"))
+_tr = tools.chr_trend()
+results.append(ok(any(r.get("notable_change") for r in _tr["rows"]), "year-over-year changes flagged in CHR trend"))
+
+# The question that drifted to wait times: the router suggests explain_difference, a
+# wrong argument gets a helpful error, and an off-topic answer is sent back.
+_q = "Why do graduate students use counselling differently from undergraduates?"
+_hints, _terms = agent.route(_q)
+results.append(ok(_hints and _hints[0][0] == "explain_difference"
+                  and _hints[0][1].get("group") == "Graduate" and _hints[0][1].get("compare_to") == "Undergraduate",
+                  f"router suggests explain_difference for the graduate question: {_hints[:1]}"))
+_bad = tools.call("compare_groups", {"dimension": "academic_level", "value": "graduate"})
+results.append(ok("explain_difference" in _bad.get("error", ""), "wrong argument gets a pointer to the right tool"))
+config.TOOL_MODE = "native"
+_x = tools.explain_difference("academic_level", "Graduate", "Undergraduate", "Counselling")
+script = iter([
+    NS(content="", tool_calls=[NS(id="d1", function=NS(name="wait_time_vs_rating", arguments='{"service": "medical"}'))]),
+    NS(content="Wait times show no clear link with satisfaction.", tool_calls=None),
+    NS(content="", tool_calls=[NS(id="d2", function=NS(name="explain_difference", arguments=json.dumps(_hints[0][1])))]),
+    NS(content=_x["decomposition"]["summary"] + " This is synthetic test data.", tool_calls=None)])
+out = agent.ask(_q, chat_fn=lambda m, tools=None: next(script))
+results.append(ok("Graduate" in out["answer"] and any(t[0] == "explain_difference" for t in out["trace"]),
+                  "off-topic answer sent back; final answer is about graduate students"))
+
 # SQL guard
 results.append(ok("error" in tools.run_sql("SELECT * FROM ratings"), "guard: row-level output blocked"))
 results.append(ok("error" in tools.run_sql("SELECT text FROM comments"), "guard: comments unreachable from SQL"))
@@ -141,13 +200,37 @@ script = iter([NS(content="", tool_calls=[NS(id="h0", function=NS(name="service_
                                                                arguments='{"service": "counselling"}'))]),
                NS(content="Wait times in counselling show no clear link with ratings.", tool_calls=None)])
 out = agent.ask("Do waits matter for counselling?", chat_fn=lambda m, tools=None: next(script))
-results.append(ok([t[0] for t in out["trace"]] == ["service_summary", "wait_time_vs_rating"]
+results.append(ok([t[0] for t in out["trace"] if t[0] != "suggested"] == ["service_summary", "wait_time_vs_rating"]
                   and not agent.mentions_internals(out["answer"]),
                   "handing work back to the user is caught and the tool is run"))
 results.append(ok(not agent._claims_significance("Running checks to identify significant gaps.")
                   and agent._claims_significance("The gap is not statistically significant."),
                   "significance claims told apart from mentions of testing"))
-results.append(ok("not connected" in agent._system(False), "data coverage note reaches the model"))
+results.append(ok("chr_status" in agent._system(False), "data coverage note reaches the model"))
+
+# One group vs everyone: same headline figures as the dashboard focus report, with a
+# real test, so a significance statement gets no warning.
+_g = tools.group_vs_everyone("faculty", "Arts")
+_k = analysis.kpi_summary(analysis.connect(), analysis.focus_ids(analysis.connect(),
+                          {"dimension": "faculty", "value": "Arts"}))
+script = iter([NS(content="", tool_calls=[NS(id="g0", function=NS(name="group_vs_everyone",
+                                          arguments='{"dimension": "faculty", "value": "Arts"}'))]),
+               NS(content=f"Arts: {_g['overall']['pct_agree_group']}% vs "
+                          f"{_g['overall']['pct_agree_everyone']}% agree; not statistically significant.",
+                  tool_calls=None)])
+out = agent.ask("How do Arts students compare with everyone?", chat_fn=lambda m, tools=None: next(script))
+results.append(ok(_g["overall"]["pct_agree_group"] == _k["pct_agree"][0] and "⚠️" not in out["answer"]
+                  and "error" in tools.group_vs_everyone("faculty", "Art"),
+                  "group vs everyone matches the dashboard and carries a real test"))
+
+# Item codes in an answer are sent back for the wording.
+script = iter([NS(content="", tool_calls=[NS(id="i0", function=NS(name="item_summary",
+                                                               arguments='{"service": "counselling"}'))]),
+               NS(content="Lowest: CS1_6 and CS1_10.", tool_calls=None),
+               NS(content="Lowest: focused on issues important to me, and better able to "
+                          "participate in university life.", tool_calls=None)])
+out = agent.ask("Weakest counselling items?", chat_fn=lambda m, tools=None: next(script))
+results.append(ok(not agent.mentions_item_codes(out["answer"]), "item codes replaced by wording"))
 
 # Follow-up questions: the second turn sees the first question and its data, and may
 # quote the first turn's figure without being flagged.

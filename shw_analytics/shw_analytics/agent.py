@@ -92,8 +92,16 @@ def _overview():
                        "data_coverage": d["data_coverage"]})
 
 
+PERIOD_RULE = (
+    "\n\nComparing periods: never compare a term that the data only partly covers (any tool "
+    "result marked PARTIAL TERM) with a complete term; it will look lower only because less "
+    "time is covered. For any question about change between periods (this fall vs last fall, "
+    "this year vs last year), use what_changed, which compares matching date windows, and quote "
+    "its volume_in_same_windows for counts. Always state the exact dates you compared.")
+
+
 def _system(json_mode):
-    s = SYSTEM.format(min_cell=config.MIN_CELL, overview=_overview())
+    s = SYSTEM.format(min_cell=config.MIN_CELL, overview=_overview()) + PERIOD_RULE
     if json_mode:
         tl = "\n".join(f"- {t['function']['name']}({', '.join(t['function']['parameters']['properties'])}): "
                        f"{t['function']['description']}" for t in tools.TOOL_SPECS)

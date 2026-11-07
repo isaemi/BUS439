@@ -90,6 +90,63 @@ def _verdict(mix, exp):
     return "no_clear_change"
 
 
+# Calendar for term names like "2025 Fall". Real CHR exports may name terms differently;
+# unrecognised names fall back to comparing each term's length with the others.
+TERM_MONTHS = {"winter": (1, 4), "spring": (1, 4), "summer": (5, 8), "fall": (9, 12), "autumn": (9, 12)}
+SLACK_DAYS = 7
+
+
+def _expected_span(term: str):
+    parts = str(term).replace("-", " ").split()
+    year = next((int(x) for x in parts if x.isdigit() and len(x) == 4), None)
+    season = next((x.lower() for x in parts if x.lower() in TERM_MONTHS), None)
+    if year is None or season is None:
+        return None, None
+    m0, m1 = TERM_MONTHS[season]
+    return pd.Timestamp(year, m0, 1), pd.Timestamp(year, m1, 1) + pd.offsets.MonthEnd(0)
+
+
+def term_coverage(con, service_line: str = None):
+    """Which dates each term actually covers, and whether the data covers the whole term.
+
+    A term is partial when the data starts or ends more than a week inside it, e.g. the
+    current term before it has finished. Comparing a partial term with a complete one makes
+    everything that builds up over time (students, visits, days in care) look lower."""
+    df = _appts(con, service_line)
+    df = df.assign(start_time=pd.to_datetime(df["start_time"]))
+    cov = df.groupby("term")["start_time"].agg(first_day="min", last_day="max").reset_index()
+    cov["first_day"], cov["last_day"] = cov["first_day"].dt.normalize(), cov["last_day"].dt.normalize()
+    spans = (cov["last_day"] - cov["first_day"]).dt.days
+    typical = spans.median()
+    slack = pd.Timedelta(days=SLACK_DAYS)
+    rows = []
+    for (_, r), span in zip(cov.iterrows(), spans):
+        start, end = _expected_span(r["term"])
+        if start is not None:
+            partial = bool(r["first_day"] > start + slack or r["last_day"] < end - slack)
+            expected = f"{start:%Y-%m-%d} to {end:%Y-%m-%d}"
+        else:   # unknown naming: much shorter than the typical term
+            partial = bool(len(cov) > 1 and span < 0.8 * typical)
+            expected = None
+        rows.append({"term": r["term"], "data_from": f"{r['first_day']:%Y-%m-%d}",
+                     "data_to": f"{r['last_day']:%Y-%m-%d}", "expected": expected, "partial": partial})
+    return sorted(rows, key=lambda x: x["data_from"])
+
+
+def partial_term_warning(con, terms, service_line: str = None):
+    """A warning string if any of `terms` is only partly covered by the data, else None."""
+    terms = [t for t in ([terms] if isinstance(terms, str) else (terms or [])) if t]
+    if not terms:
+        return None
+    bad = [c for c in term_coverage(con, service_line) if c["term"] in terms and c["partial"]]
+    if not bad:
+        return None
+    detail = "; ".join(f"{c['term']} has data only from {c['data_from']} to {c['data_to']}" for c in bad)
+    return (f"PARTIAL TERM: {detail}. Do not compare it with a complete term: totals, visits and "
+            "days in care will look lower only because less time is covered. For change "
+            "between periods use what_changed, which compares matching date windows.")
+
+
 def what_changed(con, metric: str, dimension: str, service_line: str = None,
                  compare: str = "last_year", window_days: int = 61):
     """Is a change in `metric` because of who came, or a change within groups?"""
@@ -110,6 +167,12 @@ def what_changed(con, metric: str, dimension: str, service_line: str = None,
     df = df.assign(period=period)
     df = df[df["period"] != ""]
 
+    volume = {}
+    for per in ("before", "after"):
+        part = df[df["period"] == per]
+        att = part[part["outcome"] == "attended"]
+        volume[per] = {"booked": int(len(part)), "attended": int(len(att)),
+                       "students_seen": int(att["student_key"].nunique())}
     units = _units(df, metric, dimension)
     units, excluded = stats.drop_unknown(units, "group")
     units = units.assign(group=units["group"].astype(str))
@@ -147,6 +210,8 @@ def what_changed(con, metric: str, dimension: str, service_line: str = None,
     rows.sort(key=lambda r: -abs(r["within_group_contribution"]))
 
     notes = [NOTE.format(dim=dimension)]
+    notes.append("volume_in_same_windows gives bookings, attendances and students seen for the "
+                 "SAME matched windows; quote these, not whole-term totals, when describing change.")
     if compare == "previous":
         notes.append("Compared with the window just before, so normal seasonal patterns "
                      "(e.g. exam periods) may look like change.")
@@ -157,6 +222,7 @@ def what_changed(con, metric: str, dimension: str, service_line: str = None,
         "periods": {"before": f"{a0:%Y-%m-%d} to {a1:%Y-%m-%d}",
                     "after": f"{b0:%Y-%m-%d} to {b1:%Y-%m-%d}"},
         "n": {"before": int(n["before"]), "after": int(n["after"]), "unit": unit_name},
+        "volume_in_same_windows": volume,
         "overall": {"before": round(k["before"], 2), "after": round(k["after"], 2),
                     "change": part(0)["estimate"], "ci": part(0)["ci"]},
         "mix_effect": part(1),

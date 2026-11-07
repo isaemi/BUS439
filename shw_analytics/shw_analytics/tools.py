@@ -204,6 +204,20 @@ def _need_chr():
     return con, None
 
 
+def _add_term_warning(out, con, service_line=None, term=None, all_terms=False):
+    """Attach a PARTIAL TERM warning when a requested term (or, with all_terms, any term in
+    the result) is only partly covered by the data. Never breaks the tool."""
+    from . import insights
+    try:
+        terms = [c["term"] for c in insights.term_coverage(con, service_line)] if all_terms else term
+        w = insights.partial_term_warning(con, terms, service_line)
+    except Exception:
+        return out
+    if w and isinstance(out, dict):
+        out["warning"] = w
+    return out
+
+
 def chr_summary(service_line: str = None, dimension: str = None, term: str = None):
     con, err = _need_chr()
     if err:
@@ -212,7 +226,8 @@ def chr_summary(service_line: str = None, dimension: str = None, term: str = Non
         df = analysis.chr_summary(con, service_line, dimension, term)
     except ValueError as e:
         return {"error": str(e)}
-    return {**_df_out(df), "data_source": _chr_source(con)}
+    out = {**_df_out(df), "data_source": _chr_source(con)}
+    return _add_term_warning(out, con, service_line, term=term, all_terms=(dimension == "term"))
 
 
 def chr_trend(service_line: str = None, freq: str = "month"):
@@ -220,9 +235,10 @@ def chr_trend(service_line: str = None, freq: str = "month"):
     if err:
         return err
     df = analysis.chr_trend(con, service_line, freq)
-    return {**_df_out(df), "data_source": _chr_source(con),
-            "note": "notable_change = at least 10% different from the same month last year and "
-                    "unlikely to be chance (p < 0.05)."}
+    out = {**_df_out(df), "data_source": _chr_source(con),
+           "note": "notable_change = at least 10% different from the same month last year and "
+                   "unlikely to be chance (p < 0.05)."}
+    return _add_term_warning(out, con, service_line, all_terms=(freq == "term"))
 
 
 def explain_difference(dimension: str, group: str, compare_to: str = None,
@@ -234,9 +250,10 @@ def explain_difference(dimension: str, group: str, compare_to: str = None,
         r = analysis.explain_difference(con, dimension, group, compare_to, service_line, term)
     except ValueError as e:
         return {"error": str(e)}
-    return {**{k: v for k, v in r.items() if k != "measures"},
-            "measures": json.loads(r["measures"].to_json(orient="records")),
-            "data_source": _chr_source(con)}
+    out = {**{k: v for k, v in r.items() if k != "measures"},
+           "measures": json.loads(r["measures"].to_json(orient="records")),
+           "data_source": _chr_source(con)}
+    return _add_term_warning(out, con, service_line, term=term)
 
 
 def what_changed(metric: str, dimension: str, service_line: str = None,

@@ -135,6 +135,57 @@ def test_missing_comparison_window_gives_a_clear_error():
         raise AssertionError("expected ValueError")
 
 
+def _term_con(spans):
+    """spans: {term: (first_day, last_day)} -> one appointment on each of those two days."""
+    rows = [{"student_key": f"s{i}", "term": term, "start_time": pd.Timestamp(day),
+             "service_line": "Counselling", "outcome": "attended", "academic_level": "Undergraduate"}
+            for i, (term, days) in enumerate(spans.items()) for day in days]
+    con = duckdb.connect()
+    con.register("appointments", pd.DataFrame(rows))
+    return con
+
+
+def test_term_in_progress_is_flagged_partial():
+    # The real situation: Fall 2025 complete, Fall 2026 only up to Oct 31.
+    con = _term_con({"2025 Fall": ("2025-09-01", "2025-12-31"), "2026 Winter": ("2026-01-01", "2026-04-30"),
+                     "2026 Fall": ("2026-09-01", "2026-10-31")})
+    cov = {c["term"]: c["partial"] for c in insights.term_coverage(con)}
+    assert cov == {"2025 Fall": False, "2026 Winter": False, "2026 Fall": True}
+
+
+def test_term_with_data_starting_late_is_flagged_partial():
+    con = _term_con({"2025 Fall": ("2025-11-15", "2025-12-31"), "2026 Winter": ("2026-01-01", "2026-04-30")})
+    cov = {c["term"]: c["partial"] for c in insights.term_coverage(con)}
+    assert cov == {"2025 Fall": True, "2026 Winter": False}
+
+
+def test_unrecognised_term_names_fall_back_to_length():
+    con = _term_con({"T1": ("2025-01-01", "2025-04-30"), "T2": ("2025-05-01", "2025-08-31"),
+                     "T3": ("2025-09-01", "2025-10-01")})
+    cov = {c["term"]: c["partial"] for c in insights.term_coverage(con)}
+    assert cov == {"T1": False, "T2": False, "T3": True}
+
+
+def test_partial_term_warning_names_the_term_and_points_to_what_changed():
+    con = _term_con({"2025 Fall": ("2025-09-01", "2025-12-31"), "2026 Fall": ("2026-09-01", "2026-10-31")})
+    w = insights.partial_term_warning(con, ["2025 Fall", "2026 Fall"])
+    assert "2026 Fall" in w and "2025 Fall" not in w and "what_changed" in w
+    assert insights.partial_term_warning(con, "2025 Fall") is None
+    assert insights.partial_term_warning(con, None) is None
+
+
+def test_what_changed_reports_volume_for_the_same_windows():
+    con = _con({"before": {"Undergraduate": (400, 10), "Graduate": (100, 25)},
+                "after": {"Undergraduate": (250, 10), "Graduate": (250, 25)}})
+    v = _no_show(con)["volume_in_same_windows"]
+    assert v["before"]["booked"] == 1500 and v["after"]["booked"] == 1500
+    assert v["before"]["attended"] == 1500 - round(1200 * 0.10) - round(300 * 0.25)
+    # Students seen = at least one attended visit (someone who missed every booking wasn't seen).
+    full = _con({"before": {"Undergraduate": (400, 0), "Graduate": (100, 0)},
+                 "after": {"Undergraduate": (250, 0), "Graduate": (250, 0)}})
+    assert _no_show(full)["volume_in_same_windows"]["before"]["students_seen"] == 500
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

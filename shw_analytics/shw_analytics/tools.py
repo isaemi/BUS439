@@ -239,6 +239,19 @@ def explain_difference(dimension: str, group: str, compare_to: str = None,
             "data_source": _chr_source(con)}
 
 
+def what_changed(metric: str, dimension: str, service_line: str = None,
+                 compare: str = "last_year", window_days: int = 61):
+    from . import insights
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = insights.what_changed(con, metric, dimension, service_line, compare, window_days)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
 def survey_vs_visits(dimension: str = "faculty"):
     con, err = _need_chr()
     if err:
@@ -369,7 +382,7 @@ TOOL_SPECS = [
     _fn("chr_trend", "CHR appointments over time (month, week or term), with the same month last year "
         "and notable changes flagged.",
         {"service_line": {"type": "string"}, "freq": {"type": "string", "description": "month, week or term"}}),
-    _fn("explain_difference", "WHY two groups differ in service use: splits the gap into number of "
+    _fn("explain_difference", "How two groups differ in service use: splits the gap into number of "
         "students, visits per student, days in care, services used and no-shows, each tested.",
         {"dimension": {"type": "string"}, "group": {"type": "string"},
          "compare_to": {"type": "string", "description": "optional; default is everyone else"},
@@ -393,7 +406,7 @@ REGISTRY = {"describe_data": describe_data, "service_summary": service_summary,
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
-            "explain_difference": explain_difference, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
+            "explain_difference": explain_difference, "what_changed": what_changed, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
             "comment_overview": comment_overview, "run_sql": run_sql}
 
 
@@ -436,3 +449,26 @@ def call(name, args):
         return fn(**args)
     except TypeError as e:
         return {"error": f"Bad arguments for {name}: {e}. It takes: {', '.join(params)}."}
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "what_changed",
+    "description": (
+        "Has a CHR measure changed since last year, and is the change because of WHO came "
+        "(the mix of groups shifted) or a change WITHIN groups? Compares matching date windows "
+        "and splits the change into a mix effect and a within-group effect, each with a "
+        "confidence interval and a verdict. Use for questions like 'have no-shows changed?' or "
+        "'is this a real change or just different students coming?'. Describes how a change "
+        "splits, not why it happened."),
+    "parameters": {"type": "object", "properties": {
+        "metric": {"type": "string", "enum": ["no_show_rate", "visits_per_student", "days_in_care"],
+                   "description": "no_show_rate is per appointment; the other two are per student seen."},
+        "dimension": {"type": "string",
+                      "description": "Group to split by: faculty, academic_level, gender, age_band or "
+                                     "program (any metric); also visit_type, mode or service_line "
+                                     "for no_show_rate."},
+        "service_line": {"type": "string", "description": "Optional, e.g. Counselling. Omit for all services."},
+        "compare": {"type": "string", "enum": ["last_year", "previous"],
+                    "description": "last_year (default, avoids seasonal effects) or the window just before."},
+        "window_days": {"type": "integer", "description": "Length of each window in days (default 61)."}},
+        "required": ["metric", "dimension"]}}})

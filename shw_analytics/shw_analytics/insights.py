@@ -30,7 +30,7 @@ VERDICTS = {
     "offsetting": "Hidden change: the shift in the mix of {dim} groups and the change within "
                   "groups pulled in opposite directions, so the overall number understates "
                   "what changed within groups.",
-    "no_clear_change": "No clear change: neither part is distinguishable from noise.",
+    "no_clear_change": "No clear change: neither part is distinguishable from noise. Do not call either part a driver, cause or main reason; at most say which part most of a small difference falls in, and that it is within noise.",
 }
 NOTE = ("This splits the change into who came vs. change within groups, by {dim} only. It does "
         "not show why either happened, and shifts in things not recorded here count as "

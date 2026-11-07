@@ -217,6 +217,22 @@ _SIG_NOT_A_CLAIM = re.compile(
     r"would|might|run)\b", re.IGNORECASE)
 
 
+# Tools that test with confidence intervals rather than p-values. A successful result from
+# one of these counts as a significance test for the "no test was run" warning.
+INTERVAL_TOOLS = {"what_changed"}
+
+
+def _has_interval_test(steps):
+    for step in steps:
+        try:
+            name, _, result = step
+        except (TypeError, ValueError):
+            continue
+        if name in INTERVAL_TOOLS and isinstance(result, dict) and "error" not in result:
+            return True
+    return False
+
+
 def _claims_significance(answer):
     """True if the answer asserts (or denies) significance, rather than just mentioning
     testing for it, e.g. "to identify significant gaps" is not a claim."""
@@ -243,7 +259,7 @@ def _finalise(answer, trace, mode, ctx=()):
     if bad:
         answer += (f"\n\n⚠️ Check before using: these figures could not be traced to the data: "
                    f"{', '.join(bad)}.")
-    if _claims_significance(answer) and not _has_test(list(ctx) + trace):
+    if _claims_significance(answer) and not (_has_test(list(ctx) + trace) or _has_interval_test(list(ctx) + trace)):
         answer += ("\n\n⚠️ No significance test was run for this answer, so any claim about "
                    "statistical significance is unsupported. Treat the comparison as descriptive.")
     return {"answer": answer, "trace": trace, "mode": mode, "ungrounded": bad}

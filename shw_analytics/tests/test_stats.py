@@ -94,6 +94,54 @@ def test_verdict_only_calls_direction_when_interval_excludes_zero():
     assert stats.verdict(-1.0, 2.0) == "no clear change"
 
 
+def _kit_frame(cells):
+    """cells: (period, group, n, mean) -> rows with that many values averaging `mean`."""
+    rows = []
+    for period, group, n, mean in cells:
+        rows += [{"period": period, "g": group, "y": mean}] * n
+    return pd.DataFrame(rows)
+
+
+def test_kitagawa_mix_only_worked_example():
+    # Grad share 20% -> 40%, rates unchanged: overall 57 -> 54, all of it mix.
+    df = _kit_frame([("a", "UG", 800, 60), ("a", "G", 200, 45), ("b", "UG", 600, 60), ("b", "G", 400, 45)])
+    k = stats.kitagawa(df, "g", "y", "period", "a", "b")
+    assert (round(k["before"], 6), round(k["after"], 6)) == (57.0, 54.0)
+    assert (round(k["mix"], 6), round(k["experience"], 6)) == (-3.0, 0.0)
+
+
+def test_kitagawa_experience_only():
+    # Same 80/20 mix, UG 60 -> 55: overall falls 4 points, all within groups.
+    df = _kit_frame([("a", "UG", 80, 60), ("a", "G", 20, 45), ("b", "UG", 80, 55), ("b", "G", 20, 45)])
+    k = stats.kitagawa(df, "g", "y", "period", "a", "b")
+    assert (round(k["mix"], 6), round(k["experience"], 6)) == (0.0, -4.0)
+    assert round(k["groups"].loc["UG", "experience"], 6) == -4.0
+
+
+def test_kitagawa_group_in_one_period_counts_as_mix():
+    # Y (rate 20) disappears; X unchanged at 50: overall 35 -> 50, all mix.
+    df = _kit_frame([("a", "X", 50, 50), ("a", "Y", 50, 20), ("b", "X", 100, 50)])
+    k = stats.kitagawa(df, "g", "y", "period", "a", "b")
+    assert (round(k["mix"], 6), round(k["experience"], 6)) == (15.0, 0.0)
+
+
+def test_kitagawa_parts_add_up_on_random_data():
+    rng = np.random.default_rng(4)
+    df = pd.DataFrame({"period": rng.choice(["a", "b"], 500), "g": rng.choice(list("ABCD"), 500),
+                       "y": rng.normal(size=500)})
+    k = stats.kitagawa(df, "g", "y", "period", "a", "b")
+    assert abs(k["mix"] + k["experience"] - k["total"]) < 1e-12
+
+
+def test_cluster_bootstrap_resamples_whole_clusters():
+    # Clusters of different sizes; every resample must contain each drawn cluster in full.
+    sizes = {f"s{i}": 1 + i % 4 for i in range(40)}
+    df = pd.DataFrame({"c": [c for c, n in sizes.items() for _ in range(n)]})
+    whole = lambda d: float((d.groupby("c").size() % d["c"].map(sizes).groupby(d["c"]).first() == 0).all())  # noqa: E731
+    r = stats.bootstrap(df, whole, cluster="c", n_boot=50)
+    assert np.all(r["draws"][:, 0] == 1.0)
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

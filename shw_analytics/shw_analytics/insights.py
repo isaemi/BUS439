@@ -147,6 +147,24 @@ def partial_term_warning(con, terms, service_line: str = None):
             "between periods use what_changed, which compares matching date windows.")
 
 
+def _volume_test(before: int, after: int, days_before: int, days_after: int):
+    """Did the number of students seen change? Rate ratio with a 95% interval and a
+    conditional binomial test (Poisson counts, allowing for window length). Students, not
+    appointments, because one student's appointments are not independent."""
+    from scipy.stats import binomtest
+    if before == 0 or after == 0:
+        return {"before": before, "after": after, "verdict": "not enough data"}
+    rate_b, rate_a = after / days_after, before / days_before
+    ratio = rate_b / rate_a
+    se = np.sqrt(1 / before + 1 / after)
+    lo, hi = np.exp(np.log(ratio) - 1.96 * se), np.exp(np.log(ratio) + 1.96 * se)
+    p = binomtest(after, before + after, days_after / (days_before + days_after)).pvalue
+    return {"measure": "Students seen", "before": before, "after": after,
+            "change_pct": round(100 * (ratio - 1), 1),
+            "ci_pct": [round(float(100 * (lo - 1)), 1), round(float(100 * (hi - 1)), 1)],
+            "p": float(f"{p:.2g}"), "verdict": stats.verdict(np.log(lo), np.log(hi))}
+
+
 def what_changed(con, metric: str, dimension: str, service_line: str = None,
                  compare: str = "last_year", window_days: int = 61):
     """Is a change in `metric` because of who came, or a change within groups?"""
@@ -173,6 +191,8 @@ def what_changed(con, metric: str, dimension: str, service_line: str = None,
         att = part[part["outcome"] == "attended"]
         volume[per] = {"booked": int(len(part)), "attended": int(len(att)),
                        "students_seen": int(att["student_key"].nunique())}
+    volume_change = _volume_test(volume["before"]["students_seen"], volume["after"]["students_seen"],
+                                 (a1 - a0).days + 1, (b1 - b0).days + 1)
     units = _units(df, metric, dimension)
     units, excluded = stats.drop_unknown(units, "group")
     units = units.assign(group=units["group"].astype(str))
@@ -212,6 +232,10 @@ def what_changed(con, metric: str, dimension: str, service_line: str = None,
     notes = [NOTE.format(dim=dimension)]
     notes.append("volume_in_same_windows gives bookings, attendances and students seen for the "
                  "SAME matched windows; quote these, not whole-term totals, when describing change.")
+    notes.append(f"The who-came vs within-group split applies to {METRICS[metric]['label'].lower()} "
+                 "only. It says nothing about the change in volume: for whether the number of "
+                 "students changed, use volume_change (tested). Bookings and attendances are "
+                 "descriptive counts.")
     if compare == "previous":
         notes.append("Compared with the window just before, so normal seasonal patterns "
                      "(e.g. exam periods) may look like change.")
@@ -223,6 +247,7 @@ def what_changed(con, metric: str, dimension: str, service_line: str = None,
                     "after": f"{b0:%Y-%m-%d} to {b1:%Y-%m-%d}"},
         "n": {"before": int(n["before"]), "after": int(n["after"]), "unit": unit_name},
         "volume_in_same_windows": volume,
+        "volume_change": volume_change,
         "overall": {"before": round(k["before"], 2), "after": round(k["after"], 2),
                     "change": part(0)["estimate"], "ci": part(0)["ci"]},
         "mix_effect": part(1),

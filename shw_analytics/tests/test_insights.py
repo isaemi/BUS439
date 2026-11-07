@@ -186,6 +186,26 @@ def test_what_changed_reports_volume_for_the_same_windows():
     assert _no_show(full)["volume_in_same_windows"]["before"]["students_seen"] == 500
 
 
+def test_volume_change_detects_more_students():
+    # 300 students last fall, 500 this fall, same rates: a tested increase of about 67%.
+    con = _con({"before": {"Undergraduate": (300, 0)}, "after": {"Undergraduate": (500, 0)}})
+    v = _no_show(con)["volume_change"]
+    assert v["verdict"] == "increase" and abs(v["change_pct"] - 66.7) < 0.1
+    assert v["ci_pct"][0] > 0
+
+
+def test_volume_change_same_students_is_no_clear_change():
+    plan = {"Undergraduate": (400, 0)}
+    v = _no_show(_con({"before": plan, "after": plan}))["volume_change"]
+    assert v["verdict"] == "no clear change" and v["change_pct"] == 0.0
+
+
+def test_volume_test_matches_independent_poisson_interval():
+    # 509 vs 731 in equal windows: ratio 1.436, 95% CI exp(ln 1.436 +/- 1.96*sqrt(1/509+1/731)).
+    v = insights._volume_test(509, 731, 61, 61)
+    assert v["change_pct"] == 43.6 and v["ci_pct"] == [28.3, 60.8] and v["p"] < 0.001
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

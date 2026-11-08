@@ -269,6 +269,56 @@ def what_changed(metric: str, dimension: str, service_line: str = None,
     return {**r, "data_source": _chr_source(con)}
 
 
+def care_journeys(service_line: str = None, dimension: str = None,
+                  return_days: int = 30, follow_days: int = 60):
+    from . import care_patterns
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = care_patterns.care_journeys(con, service_line, dimension, int(return_days), int(follow_days))
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
+def noshow_patterns(service_line: str = None, term: str = None):
+    from . import care_patterns
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = care_patterns.noshow_patterns(con, service_line, term)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
+def service_pathways(within_days: int = 30):
+    from . import care_patterns
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = care_patterns.service_pathways(con, int(within_days))
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
+def insight_playbook(question: str = None, topic_id: str = None):
+    from . import playbook
+    return playbook.insight_playbook(question, topic_id)
+
+
+def priority_items(service: str):
+    from . import drivers
+    try:
+        return drivers.priority_items(_con(), service)
+    except ValueError as e:
+        return {"error": str(e)}
+
+
 def survey_vs_visits(dimension: str = "faculty"):
     con, err = _need_chr()
     if err:
@@ -423,7 +473,7 @@ REGISTRY = {"describe_data": describe_data, "service_summary": service_summary,
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
-            "explain_difference": explain_difference, "what_changed": what_changed, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
+            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
             "comment_overview": comment_overview, "run_sql": run_sql}
 
 
@@ -489,3 +539,56 @@ TOOL_SPECS.append({"type": "function", "function": {
                     "description": "last_year (default, avoids seasonal effects) or the window just before."},
         "window_days": {"type": "integer", "description": "Length of each window in days (default 61)."}},
         "required": ["metric", "dimension"]}}})
+
+
+def _insight_spec(name, desc, props, required=()):
+    return {"type": "function", "function": {"name": name, "description": desc, "parameters": {
+        "type": "object", "properties": props, "required": list(required)}}}
+
+
+TOOL_SPECS += [
+    _insight_spec("care_journeys",
+          "What happens after a student's first visit in a new episode of care: share with a single "
+          "visit, share returning within 30 days, median days to a second visit, and whether "
+          "students attend again after missing an appointment. Optional tested comparison of "
+          "student groups. Use for continuity, return visits and 'do students come back'. A single "
+          "visit can be planned single-session care, so never call it dropout.",
+          {"service_line": {"type": "string", "description": "Optional, e.g. Counselling."},
+           "dimension": {"type": "string", "description": "Optional group to compare: faculty, "
+                         "academic_level, gender, age_band or program."},
+           "return_days": {"type": "integer", "description": "Window for a quick return (default 30)."},
+           "follow_days": {"type": "integer", "description": "Follow-up window (default 60)."}}),
+    _insight_spec("noshow_patterns",
+          "Which kinds of appointments are missed more often: by format, weekday, time of day, "
+          "booking history (first booking / missed before) and student group. Tested with each "
+          "student counted once and corrected for many tests. Use for no-show hotspots and "
+          "reminder targeting. Patterns, not causes.",
+          {"service_line": {"type": "string", "description": "Optional, e.g. Counselling."},
+           "term": {"type": "string", "description": "Optional term, e.g. 2025 Fall."}}),
+    _insight_spec("service_pathways",
+          "Of students starting a new episode of care in one service, the share who use another "
+          "service soon after (e.g. medical clinic to counselling), with 95% ranges. Use for "
+          "integrated or team-based care questions. Shows movement, not referrals.",
+          {"within_days": {"type": "integer", "description": "Days after the start (default 30)."}}),
+    _insight_spec("insight_playbook",
+          "Look up how to answer a broad or deeper question well: which analyses to run, how to "
+          "read them, what to avoid and how to word the answer. Call FIRST for questions like "
+          "'what should we know', 'anything surprising', 'where should we focus', 'are we reaching "
+          "X students', 'is integrated care working', or anything about continuity of care.",
+          {"question": {"type": "string", "description": "The staff question, as asked."},
+           "topic_id": {"type": "string", "description": "Optional id from a previous lookup."}}),
+]
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "priority_items",
+    "description": (
+        "Key-driver analysis for one service's survey: which questions are most closely linked "
+        "to students' overall rating of the service (satisfaction, or recommending), combined with "
+        "how well each scores. Returns 'fix first' priorities only when they are stable across "
+        "re-samples of students, or says no single question stands out. Use for 'what should we "
+        "focus on', 'what matters most', 'is the lowest-scoring area what hurts satisfaction'. "
+        "Say 'most closely linked to', never 'drives'."),
+    "parameters": {"type": "object", "properties": {
+        "service": {"type": "string", "description": "counselling, medical, wellness_adv or info_desk."}},
+        "required": ["service"]}}})

@@ -39,10 +39,15 @@ def _respondent_scores(con, service=None, item_code=None):
 
 
 def service_summary(con):
-    df = con.execute("""SELECT service, COUNT(DISTINCT response_id) AS n,
-                               ROUND(AVG(score), 2) AS mean_score,
-                               ROUND(100 * AVG(CASE WHEN agree THEN 1 ELSE 0 END), 1) AS pct_agree
-                        FROM ratings GROUP BY service ORDER BY n DESC""").df()
+    """Per service: respondents, mean score and average agreement, each student counted once
+    (the same basis as compare_groups), so a service's figure and its groups' figures match."""
+    df = con.execute("""WITH per_student AS (
+                            SELECT service, response_id, AVG(score) AS ms,
+                                   AVG(CASE WHEN agree THEN 1 ELSE 0 END) AS ar
+                            FROM ratings GROUP BY service, response_id)
+                        SELECT service, COUNT(*) AS n, ROUND(AVG(ms), 2) AS mean_score,
+                               ROUND(100 * AVG(ar), 1) AS pct_agree
+                        FROM per_student GROUP BY service ORDER BY n DESC""").df()
     return suppress_small_cells(df)[0]
 
 

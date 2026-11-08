@@ -100,8 +100,59 @@ PERIOD_RULE = (
     "its volume_in_same_windows for counts. Always state the exact dates you compared.")
 
 
+INSIGHT_RULE = (
+    "\n\nDeeper questions: for broad or open questions (what should we know, anything "
+    "surprising, where to focus, are we reaching a group, is integrated care working) and for "
+    "questions about continuity of care, missed appointments or movement between services, first "
+    "call insight_playbook with the question and follow the steps it returns. Respect its "
+    "'avoid' list and wording. If its status is needs_data, explain what data is missing "
+    "instead of estimating.")
+
+
+def _explain_sources(question, prev_trace, chat_fn, ctx):
+    """Answer 'where did this come from?' in plain words, from evidence cards built from the
+    previous answer's analysis steps. Falls back to the cards themselves if the model's
+    wording mentions internal names or fails."""
+    from . import provenance
+    cards = provenance.evidence_cards(prev_trace)
+    trace = list(prev_trace) + [("evidence_cards", {}, {"cards": cards})]
+    if not cards:
+        return {"answer": "The previous answer did not use any data analysis, so there are no "
+                          "sources to show.", "trace": trace, "mode": "sources", "ungrounded": []}
+    messages = [{"role": "system", "content": provenance.SOURCES_PROMPT},
+                {"role": "user", "content": f"Staff question: {question}\n\nEvidence cards for "
+                                            f"the previous answer:\n\n{provenance.render_text(cards)}"}]
+    try:
+        answer = (chat_fn(messages).content or "").strip()
+    except Exception:
+        answer = ""
+    if not answer or mentions_internals(answer):
+        answer = provenance.render_markdown(cards)
+    return _finalise(answer, trace, "sources", ctx)
+
+
+EVIDENCE_RULE = (
+    "\n\nEvidence rules: (1) A result that is not distinguishable from noise is absence of "
+    "evidence, not proof of no effect: never write that something 'is not the issue' or 'was "
+    "tested and is not the problem'; say the data could not detect a difference and, if known, "
+    "how large a difference it could detect. (2) When a verdict is 'no clear change', mention "
+    "the group figures behind it only as context, never as a finding or a 'hidden shift'. "
+    "(3) State the dates each finding covers, especially when combining same-dates comparisons "
+    "with results that cover all dates. (4) Questions about combinations of groups (e.g. "
+    "first-generation students in particular faculties) cannot be checked systematically yet: "
+    "say so first, give one-at-a-time results, never answer 'no' to the combination, and never "
+    "build the combination from custom queries.")
+
+
+AGREE_RULE = (
+    "\n\nWording '% agree': for a single question it is the share of students who agreed "
+    "('33% of students agreed they felt welcomed'). For a whole service or a student group it "
+    "is an average across questions, not a share of students: say 'on average, students "
+    "agreed with 39% of the counselling questions', never '39% of students agreed'.")
+
+
 def _system(json_mode):
-    s = SYSTEM.format(min_cell=config.MIN_CELL, overview=_overview()) + PERIOD_RULE
+    s = SYSTEM.format(min_cell=config.MIN_CELL, overview=_overview()) + PERIOD_RULE + INSIGHT_RULE + EVIDENCE_RULE + AGREE_RULE
     if json_mode:
         tl = "\n".join(f"- {t['function']['name']}({', '.join(t['function']['parameters']['properties'])}): "
                        f"{t['function']['description']}" for t in tools.TOOL_SPECS)
@@ -219,7 +270,7 @@ _SIG_NOT_A_CLAIM = re.compile(
 
 # Tools that test with confidence intervals rather than p-values. A successful result from
 # one of these counts as a significance test for the "no test was run" warning.
-INTERVAL_TOOLS = {"what_changed"}
+INTERVAL_TOOLS = {"priority_items", "what_changed", "care_journeys", "noshow_patterns", "service_pathways"}
 
 
 def _has_interval_test(steps):
@@ -436,6 +487,12 @@ def ask(question, history=None, max_steps=6, chat_fn=None):
     mode = config.TOOL_MODE
     trace = []
     ctx = _context_trace(question, history)
+    from . import provenance
+    if provenance.is_sources_question(question):
+        prev = provenance.last_trace(history) or [
+            s for s in (ctx or []) if isinstance(s, (list, tuple)) and len(s) == 3]
+        if prev:
+            return _explain_sources(question, prev, chat_fn, ctx)
     if mode in ("native", "auto"):
         try:
             return _ask_native(question, history, max_steps, chat_fn, trace, ctx)
@@ -444,6 +501,21 @@ def ask(question, history=None, max_steps=6, chat_fn=None):
                 raise
             trace.append(("fallback", {}, f"native tool calling rejected: {e}"))
     return _ask_json(question, history, max_steps, chat_fn, trace, ctx)
+
+
+FINAL_NUDGE = ("You have reached the step limit. Answer the question now using only the tool "
+               "results above. Give n with every number, say what the results do not show, "
+               "and do not call any more tools.")
+REPEAT_NOTE = ("You already ran this (only names or formatting differ). Use the earlier result: "
+               "answer now, or try a genuinely different query.")
+
+
+def _call_key(name, args):
+    """Same call = same tool and same arguments; for SQL, ignore aliases and spacing."""
+    if name == "run_sql":
+        sql = re.sub(r"\s+as\s+\w+", "", str(args.get("sql", "")), flags=re.I)
+        return (name, " ".join(sql.lower().split()))
+    return (name, json.dumps(args, sort_keys=True))
 
 
 def _ask_native(question, history, max_steps, chat_fn, trace, ctx):
@@ -456,6 +528,7 @@ def _ask_native(question, history, max_steps, chat_fn, trace, ctx):
     nudged = retried = handed_off = coded = drifted = False
     empties = 0
     seen = {}
+    asked = set()
     for _ in range(max_steps):
         msg = chat_fn(messages, tools=tools.TOOL_SPECS)
         if not getattr(msg, "tool_calls", None) and not (msg.content or "").strip():
@@ -504,9 +577,19 @@ def _ask_native(question, history, max_steps, chat_fn, trace, ctx):
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-            result = _run_tool(tc.function.name, args, seen)
+            key = _call_key(tc.function.name, args)
+            if key in asked:
+                result = {"note": REPEAT_NOTE}
+            else:
+                asked.add(key)
+                result = _run_tool(tc.function.name, args, seen)
             trace.append((tc.function.name, args, result))
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": _trim(result)})
+    messages.append({"role": "user", "content": FINAL_NUDGE})
+    msg = chat_fn(messages)
+    if (getattr(msg, "content", None) or "").strip():
+        trace.append(("forced_answer", {}, {}))
+        return _finalise(msg.content, trace, "native", ctx)
     return {"answer": "I couldn't finish within the step limit; try a narrower question.",
             "trace": trace, "mode": "native"}
 

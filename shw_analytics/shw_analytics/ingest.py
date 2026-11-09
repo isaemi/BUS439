@@ -273,10 +273,12 @@ def write_db(tables, db_path=None):
     con.execute("""CREATE OR REPLACE VIEW ratings_demo AS
                    SELECT r.*, s.* EXCLUDE (response_id, service)
                    FROM ratings r JOIN responses s USING (response_id)""")
+    from .schema import apply_comments
+    apply_comments(con, load_dictionary())
     con.close()
 
 
-def load(target, db_path=None):
+def load(target, db_path=None, chr_dir=None):
     """Read one export or a folder of exports, build every table, and swap the new
     database in only once it is complete (so the app never sees a half-built one)."""
     import os
@@ -289,6 +291,19 @@ def load(target, db_path=None):
     tmp = final.with_suffix(".building.duckdb")
     tmp.unlink(missing_ok=True)
     write_db(tables, tmp)
+    # CHR appointment exports, if any, go into the same database before the swap.
+    import duckdb
+    from . import chr as chr_
+    con = duckdb.connect(str(tmp))
+    chr_issues = chr_.add_tables(con, d, chr_dir or chr_.CHR_DIR)
+    if chr_issues:
+        dq = pd.concat([tables["data_quality"], pd.DataFrame(chr_issues)], ignore_index=True)
+        con.register("tmp_dq", dq)
+        con.execute("CREATE OR REPLACE TABLE data_quality AS SELECT * FROM tmp_dq")
+        tables["data_quality"] = dq
+    from .schema import apply_comments
+    apply_comments(con, d)
+    con.close()
     os.replace(tmp, final)
     return tables
 

@@ -35,10 +35,20 @@ def strip_think(text):
     return _THINK.sub("", text or "").strip()
 
 
+def _one_system(messages):
+    """UBC's vLLM Qwen template allows one system message, first. Later ones become user notes."""
+    out = []
+    for i, m in enumerate(messages):
+        if i > 0 and isinstance(m, dict) and m.get("role") == "system":
+            m = {"role": "user", "content": "[Note] " + str(m.get("content", ""))}
+        out.append(m)
+    return out
+
+
 def chat(messages, model=None, tools=None, temperature=0.1, max_tokens=None):
     """Returns the raw choice.message. Retries once without extra_body if the
     gateway rejects the thinking switch."""
-    kwargs = dict(model=model or config.CHAT_MODEL, messages=messages,
+    kwargs = dict(model=model or config.CHAT_MODEL, messages=_one_system(messages),
                   temperature=temperature, max_tokens=max_tokens or config.MAX_TOKENS)
     if tools:
         kwargs["tools"] = tools

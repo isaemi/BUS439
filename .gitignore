@@ -1,0 +1,29 @@
+# Secrets and local settings
+.env
+.env.local
+
+# Survey data and the database built from it never go in the repo
+data/
+*.duckdb
+*.duckdb.wal
+*.csv
+!docs/chr_sample_export.csv
+*.qsf
+
+# Python and editor clutter
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+.vscode/
+.streamlit/secrets.toml
+.venv/
+__pycache__/
+*.duckdb
+*.duckdb.wal
+data/raw/
+*_export*.csv
+charts/
+.DS_Store
+data/

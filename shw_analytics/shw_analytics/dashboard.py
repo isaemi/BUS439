@@ -43,9 +43,9 @@ PANEL_TYPES = {
 
 TITLES = {  # default title and subtitle per panel type
     "kpis": ("", ""),
-    "service_comparison": ("Student experience by service", "% who agree (rated 4 or 5)"),
+    "service_comparison": ("Student experience by service", "Average agreement: % of questions rated 4–5, each student counted once"),
     "item_breakdown": ("Survey items", "% who agree, weakest first"),
-    "group_comparison": ("Experience by group", "% who agree (rated 4 or 5)"),
+    "group_comparison": ("Experience by group", "Average agreement: % of questions rated 4–5, each student counted once"),
     "demographics": ("Who responded", "Respondents by group"),
     "changes_to_watch": ("Changes to watch", "Tested gaps and notable differences"),
     "wait_time": ("Wait time and ratings", "% who agree, by wait before the appointment"),
@@ -155,7 +155,7 @@ def _kpis(panel, con, ids, focus):
         "sub": f"All respondents: {on:,}" if has_focus else "Completed the survey",
     }]
     for key, label, icon, fmt, higher_is_better in [
-        ("pct_agree", "Agree (rated 4–5)", "check", "{:.1f}%", True),
+        ("pct_agree", "Average agreement (rated 4–5)", "check", "{:.1f}%", True),
         ("mean_score", "Average rating (out of 5)", "star", "{:.2f}", True),
         ("pct_strongly_disagree", "Strongly disagree", "alert", "{:.1f}%", False),
     ]:
@@ -187,7 +187,7 @@ def _series(panel, con, ids, by, service=None):
     panel.df = df
     panel.extra["measure"] = measure
     if measure == "mean_score":
-        panel.subtitle = panel.subtitle.replace("% who agree (rated 4 or 5)", "Average rating (out of 5)") \
+        panel.subtitle = panel.subtitle.replace("Average agreement: % of questions rated 4–5, each student counted once", "Average rating (out of 5)") \
                                        .replace("% who agree", "Average rating")
 
 

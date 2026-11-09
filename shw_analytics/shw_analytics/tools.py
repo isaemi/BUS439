@@ -40,14 +40,23 @@ def _df_out(df, hidden=0, note=None):
 def describe_data():
     d = load_dictionary()
     con = _con()
-    tables = {}
-    for t in ["responses", "ratings", "items", "response_faculty", "response_disability", "response_multi"]:
-        cols = con.execute(f"DESCRIBE {t}").df()
-        tables[t] = [f"{r.column_name} {r.column_type}" for r in cols.itertuples()]
+    from .schema import describe
+    s = describe(con, include=["responses", "ratings", "items", "response_faculty",
+                               "response_disability", "response_multi", "appointments"])
+    cov = dict(d.get("coverage", {}))
+    if analysis.has_chr(con):
+        cov["available"] = cov.get("available", []) + cov.get("with_chr", [])
+        cov["chr_status"] = _chr_source(con)
+    else:
+        cov["not_yet"] = cov.get("without_chr", []) + cov.get("not_yet", [])
+        cov["chr_status"] = "not loaded"
+    cov.pop("with_chr", None)
+    cov.pop("without_chr", None)
     services = {v["key"]: v["name"] for v in d["services"].values()}
     return {
-        "tables": tables,
-        "views": {"ratings_demo": "ratings joined to responses (all demographic columns)"},
+        "tables": s["tables"],
+        "views": s["views"],
+        "relationships": s["relationships"],
         "services": services,
         "likert": "score 1-5, " + ", ".join(f"{k}={v}" for k, v in d["likert"]["scale"].items())
                   + "; agree = score >= 4",
@@ -55,7 +64,7 @@ def describe_data():
         "faculty_values": d["checkbox"]["faculty"]["choices"],
         "category_values": {k: v for k, v in _category_values().items()
                             if k not in ("faculty", "disability") and len(v) <= 12},
-        "data_coverage": {**d.get("coverage", {}), "survey_period": _period()},
+        "data_coverage": {**cov, "survey_period": _period()},
         "rules": [f"Grouped queries must include COUNT(DISTINCT response_id) AS n",
                   f"Groups with n < {config.MIN_CELL} are removed from results",
                   "Never select response_id; comments are only reachable via search_comments"],
@@ -78,6 +87,11 @@ def _category_values():
     vals["disability"] = sorted(con.execute("SELECT DISTINCT disability FROM response_disability").df()["disability"])
     vals["faculty"] = sorted(con.execute("SELECT DISTINCT faculty FROM response_faculty").df()["faculty"])
     vals["service"] = sorted(con.execute("SELECT DISTINCT service FROM ratings").df()["service"])
+    if analysis.has_chr(con):
+        for c in ("faculty", "academic_level", "gender", "service_line", "visit_type", "mode",
+                  "outcome", "term", "age_band", "program"):
+            chr_vals = con.execute(f'SELECT DISTINCT "{c}" FROM appointments WHERE "{c}" IS NOT NULL').df()[c]
+            vals[c] = sorted(set(vals.get(c, [])) | set(chr_vals.astype(str)))
     return vals
 
 
@@ -114,8 +128,9 @@ def run_sql(sql: str):
         df = _con().execute(s).df()
     except Exception as e:  # return the DB error so the model can fix its SQL
         return {"error": f"SQL error: {e}"}
-    if any(c.lower() == "response_id" for c in df.columns):
-        return {"error": "Results may not contain response_id. Aggregate instead."}
+    if any(c.lower() in ("response_id", "student_key", "provider_key", "appointment_key") for c in df.columns):
+        return {"error": "Results may not contain individual IDs. Aggregate instead "
+                         "(e.g. COUNT(DISTINCT student_key) AS n)."}
     grouped = re.search(r"\bgroup\s+by\b", s, re.IGNORECASE)
     if grouped and not any(is_count_col(c) for c in df.columns):
         return {"error": "Grouped results must include a count column, e.g. COUNT(DISTINCT response_id) AS n."}
@@ -153,6 +168,9 @@ def compare_groups(dimension: str, service: str = None, item_code: str = None):
     except ValueError as e:
         return {"error": str(e)}
     out = _df_out(df, note="Descriptive only (not a significance test).")
+    k = analysis.kpi_summary(_con(), None, service)
+    out["everyone"] = {"n": int(k["respondents"][1]), "pct_agree": float(k["pct_agree"][1]),
+                       "mean_score": float(k["mean_score"][1])}
     if hidden_groups:
         out["hidden_groups"] = hidden_groups
         out["suppression_note"] = (f"These groups exist but have fewer than {config.MIN_CELL} "
@@ -162,6 +180,158 @@ def compare_groups(dimension: str, service: str = None, item_code: str = None):
     return out
 
 
+def group_vs_everyone(dimension: str, value: str, service: str = None):
+    try:
+        r = analysis.group_vs_everyone(_con(), {"dimension": dimension, "value": value}, service)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"group": r["group"], "overall": r["overall"],
+            "by_service": json.loads(r["by_service"].to_json(orient="records")),
+            "method": "Group vs everyone else, Mann-Whitney on respondents' mean scores; per-service "
+                      "results corrected for multiple comparisons (q). Significant = p or q < 0.05."}
+
+
+def _chr_source(con):
+    return ("CHR appointments (SYNTHETIC test data, not real)" if analysis.chr_is_synthetic(con)
+            else "CHR appointments")
+
+
+def _need_chr():
+    con = _con()
+    if not analysis.has_chr(con):
+        return None, {"error": "No CHR appointment export is loaded, so appointment questions can't be "
+                               "answered yet. Add a CHR export to data/chr_exports and rebuild."}
+    return con, None
+
+
+def _add_term_warning(out, con, service_line=None, term=None, all_terms=False):
+    """Attach a PARTIAL TERM warning when a requested term (or, with all_terms, any term in
+    the result) is only partly covered by the data. Never breaks the tool."""
+    from . import insights
+    try:
+        terms = [c["term"] for c in insights.term_coverage(con, service_line)] if all_terms else term
+        w = insights.partial_term_warning(con, terms, service_line)
+    except Exception:
+        return out
+    if w and isinstance(out, dict):
+        out["warning"] = w
+    return out
+
+
+def chr_summary(service_line: str = None, dimension: str = None, term: str = None):
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        df = analysis.chr_summary(con, service_line, dimension, term)
+    except ValueError as e:
+        return {"error": str(e)}
+    out = {**_df_out(df), "data_source": _chr_source(con)}
+    return _add_term_warning(out, con, service_line, term=term, all_terms=(dimension == "term"))
+
+
+def chr_trend(service_line: str = None, freq: str = "month"):
+    con, err = _need_chr()
+    if err:
+        return err
+    df = analysis.chr_trend(con, service_line, freq)
+    out = {**_df_out(df), "data_source": _chr_source(con),
+           "note": "notable_change = at least 10% different from the same month last year and "
+                   "unlikely to be chance (p < 0.05)."}
+    return _add_term_warning(out, con, service_line, all_terms=(freq == "term"))
+
+
+def explain_difference(dimension: str, group: str, compare_to: str = None,
+                       service_line: str = None, term: str = None):
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = analysis.explain_difference(con, dimension, group, compare_to, service_line, term)
+    except ValueError as e:
+        return {"error": str(e)}
+    out = {**{k: v for k, v in r.items() if k != "measures"},
+           "measures": json.loads(r["measures"].to_json(orient="records")),
+           "data_source": _chr_source(con)}
+    return _add_term_warning(out, con, service_line, term=term)
+
+
+def what_changed(metric: str, dimension: str, service_line: str = None,
+                 compare: str = "last_year", window_days: int = 61):
+    from . import insights
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = insights.what_changed(con, metric, dimension, service_line, compare, window_days)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
+def care_journeys(service_line: str = None, dimension: str = None,
+                  return_days: int = 30, follow_days: int = 60):
+    from . import care_patterns
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = care_patterns.care_journeys(con, service_line, dimension, int(return_days), int(follow_days))
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
+def noshow_patterns(service_line: str = None, term: str = None):
+    from . import care_patterns
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = care_patterns.noshow_patterns(con, service_line, term)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
+def service_pathways(within_days: int = 30):
+    from . import care_patterns
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        r = care_patterns.service_pathways(con, int(within_days))
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": _chr_source(con)}
+
+
+def insight_playbook(question: str = None, topic_id: str = None):
+    from . import playbook
+    return playbook.insight_playbook(question, topic_id)
+
+
+def priority_items(service: str):
+    from . import drivers
+    try:
+        return drivers.priority_items(_con(), service)
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+def survey_vs_visits(dimension: str = "faculty"):
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        df = analysis.survey_vs_visits(con, dimension)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**_df_out(df), "data_source": "survey respondents vs " + _chr_source(con),
+            "note": "representation_ratio below 1 = this group is under-represented in survey "
+                    "responses compared with who actually visits."}
+
+
 def wait_time_vs_rating(service: str):
     try:
         df, hidden, stats = analysis.wait_vs_rating(_con(), service)
@@ -169,8 +339,14 @@ def wait_time_vs_rating(service: str):
         return {"error": str(e)}
     out = _df_out(df, hidden)
     out["correlation"] = stats
-    out["note"] = ("wait codes are ordered shortest->longest; rho < 0 means longer waits go with "
-                   "lower ratings. Only call it a relationship if p_value < 0.05.")
+    rho, p = stats["spearman_rho"], stats["p_value"]
+    direction = "higher" if rho > 0 else "lower"
+    out["interpretation"] = (
+        f"Longer waits go with slightly {direction} ratings (rho = {rho}), but this is "
+        f"{'statistically significant' if p < 0.05 else 'NOT statistically significant'} "
+        f"(p = {p}), so {'treat it as a real relationship' if p < 0.05 else 'there is no clear relationship'}."
+    )
+    out["note"] = "Wait codes are ordered shortest to longest (assumed until labels are loaded)."
     return out
 
 
@@ -260,6 +436,26 @@ TOOL_SPECS = [
                        "living_arrangement, new_to_ubc"},
          "service": _SVC,
          "item_code": {"type": "string", "description": "optional; omit to use all items"}}, ["dimension"]),
+    _fn("group_vs_everyone", "How ONE group compares with all respondents (e.g. Faculty of Arts, "
+        "disability_any = yes), overall and per service, with significance tests.",
+        {"dimension": {"type": "string", "description": "e.g. faculty, intl_or_domestic, disability_any"},
+         "value": {"type": "string", "description": "the group, e.g. Arts, or a code such as 1"},
+         "service": _SVC}, ["dimension", "value"]),
+    _fn("chr_summary", "CHR appointments: students seen, appointments booked/attended, visits per "
+        "student, days in care, no-show rate; overall or by group (faculty, academic_level, gender, "
+        "age_band, program, service_line, visit_type, mode, term).",
+        {"service_line": {"type": "string", "description": "e.g. Counselling, Medical"},
+         "dimension": {"type": "string"}, "term": {"type": "string", "description": "e.g. 2026 Winter"}}),
+    _fn("chr_trend", "CHR appointments over time (month, week or term), with the same month last year "
+        "and notable changes flagged.",
+        {"service_line": {"type": "string"}, "freq": {"type": "string", "description": "month, week or term"}}),
+    _fn("explain_difference", "How two groups differ in service use: splits the gap into number of "
+        "students, visits per student, days in care, services used and no-shows, each tested.",
+        {"dimension": {"type": "string"}, "group": {"type": "string"},
+         "compare_to": {"type": "string", "description": "optional; default is everyone else"},
+         "service_line": {"type": "string"}, "term": {"type": "string"}}, ["dimension", "group"]),
+    _fn("survey_vs_visits", "Whether survey respondents reflect who actually visits, by faculty.",
+        {"dimension": {"type": "string"}}),
     _fn("wait_time_vs_rating", "How appointment wait time relates to ratings (medical or counselling).",
         {"service": _SVC}, ["service"]),
     _fn("equity_flags", "Statistically tested gaps between demographic groups (FDR-corrected).",
@@ -275,15 +471,124 @@ TOOL_SPECS = [
 
 REGISTRY = {"describe_data": describe_data, "service_summary": service_summary,
             "item_summary": item_summary, "compare_groups": compare_groups,
-            "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating, "search_comments": search_comments,
+            "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
+            "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
+            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
             "comment_overview": comment_overview, "run_sql": run_sql}
 
 
+_SERVICE_ALIASES = {"counseling": "counselling", "counselling services": "counselling",
+                    "medical services": "medical", "wellness advising": "wellness_adv",
+                    "wellness advisor": "wellness_adv", "info desk": "info_desk",
+                    "wellness info desk": "info_desk", "wellness centre": "wellness_ctr",
+                    "wellness center": "wellness_ctr", "naloxone training": "naloxone"}
+
+
+def _norm_args(args):
+    """Small-model slips that shouldn't cost a round-trip: survey service names in any
+    case or spelling, and CHR service lines in any case."""
+    out = dict(args)
+    if isinstance(out.get("service"), str):
+        v = out["service"].strip().lower()
+        out["service"] = _SERVICE_ALIASES.get(v, v.replace(" ", "_"))
+    if isinstance(out.get("service_line"), str):
+        v = out["service_line"].strip().lower()
+        out["service_line"] = {"counseling": "counselling"}.get(v, v)
+    return out
+
+
 def call(name, args):
+    import inspect
     fn = REGISTRY.get(name)
     if not fn:
-        return {"error": f"Unknown tool {name}"}
+        return {"error": f"Unknown tool {name}. Available: {', '.join(REGISTRY)}"}
+    args = _norm_args(args or {})
+    params = inspect.signature(fn).parameters
+    unknown = [k for k in args if k not in params]
+    if unknown:
+        hint = ""
+        if name == "compare_groups" and "value" in unknown:
+            hint = (" To compare one group with everyone, use group_vs_everyone; to explain why two "
+                    "groups differ in appointments, use explain_difference.")
+        return {"error": f"{name} has no parameter {', '.join(unknown)}. It takes: "
+                         f"{', '.join(params)}.{hint}"}
     try:
-        return fn(**(args or {}))
+        return fn(**args)
     except TypeError as e:
-        return {"error": f"Bad arguments for {name}: {e}"}
+        return {"error": f"Bad arguments for {name}: {e}. It takes: {', '.join(params)}."}
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "what_changed",
+    "description": (
+        "Has a CHR measure changed since last year, and is the change because of WHO came "
+        "(the mix of groups shifted) or a change WITHIN groups? Compares matching date windows "
+        "and splits the change into a mix effect and a within-group effect, each with a "
+        "confidence interval and a verdict. Use for questions like 'have no-shows changed?' or "
+        "'is this a real change or just different students coming?'. Describes how a change "
+        "splits, not why it happened."),
+    "parameters": {"type": "object", "properties": {
+        "metric": {"type": "string", "enum": ["no_show_rate", "visits_per_student", "days_in_care"],
+                   "description": "no_show_rate is per appointment; the other two are per student seen."},
+        "dimension": {"type": "string",
+                      "description": "Group to split by: faculty, academic_level, gender, age_band or "
+                                     "program (any metric); also visit_type, mode or service_line "
+                                     "for no_show_rate."},
+        "service_line": {"type": "string", "description": "Optional, e.g. Counselling. Omit for all services."},
+        "compare": {"type": "string", "enum": ["last_year", "previous"],
+                    "description": "last_year (default, avoids seasonal effects) or the window just before."},
+        "window_days": {"type": "integer", "description": "Length of each window in days (default 61)."}},
+        "required": ["metric", "dimension"]}}})
+
+
+def _insight_spec(name, desc, props, required=()):
+    return {"type": "function", "function": {"name": name, "description": desc, "parameters": {
+        "type": "object", "properties": props, "required": list(required)}}}
+
+
+TOOL_SPECS += [
+    _insight_spec("care_journeys",
+          "What happens after a student's first visit in a new episode of care: share with a single "
+          "visit, share returning within 30 days, median days to a second visit, and whether "
+          "students attend again after missing an appointment. Optional tested comparison of "
+          "student groups. Use for continuity, return visits and 'do students come back'. A single "
+          "visit can be planned single-session care, so never call it dropout.",
+          {"service_line": {"type": "string", "description": "Optional, e.g. Counselling."},
+           "dimension": {"type": "string", "description": "Optional group to compare: faculty, "
+                         "academic_level, gender, age_band or program."},
+           "return_days": {"type": "integer", "description": "Window for a quick return (default 30)."},
+           "follow_days": {"type": "integer", "description": "Follow-up window (default 60)."}}),
+    _insight_spec("noshow_patterns",
+          "Which kinds of appointments are missed more often: by format, weekday, time of day, "
+          "booking history (first booking / missed before) and student group. Tested with each "
+          "student counted once and corrected for many tests. Use for no-show hotspots and "
+          "reminder targeting. Patterns, not causes.",
+          {"service_line": {"type": "string", "description": "Optional, e.g. Counselling."},
+           "term": {"type": "string", "description": "Optional term, e.g. 2025 Fall."}}),
+    _insight_spec("service_pathways",
+          "Of students starting a new episode of care in one service, the share who use another "
+          "service soon after (e.g. medical clinic to counselling), with 95% ranges. Use for "
+          "integrated or team-based care questions. Shows movement, not referrals.",
+          {"within_days": {"type": "integer", "description": "Days after the start (default 30)."}}),
+    _insight_spec("insight_playbook",
+          "Look up how to answer a broad or deeper question well: which analyses to run, how to "
+          "read them, what to avoid and how to word the answer. Call FIRST for questions like "
+          "'what should we know', 'anything surprising', 'where should we focus', 'are we reaching "
+          "X students', 'is integrated care working', or anything about continuity of care.",
+          {"question": {"type": "string", "description": "The staff question, as asked."},
+           "topic_id": {"type": "string", "description": "Optional id from a previous lookup."}}),
+]
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "priority_items",
+    "description": (
+        "Key-driver analysis for one service's survey: which questions are most closely linked "
+        "to students' overall rating of the service (satisfaction, or recommending), combined with "
+        "how well each scores. Returns 'fix first' priorities only when they are stable across "
+        "re-samples of students, or says no single question stands out. Use for 'what should we "
+        "focus on', 'what matters most', 'is the lowest-scoring area what hurts satisfaction'. "
+        "Say 'most closely linked to', never 'drives'."),
+    "parameters": {"type": "object", "properties": {
+        "service": {"type": "string", "description": "counselling, medical, wellness_adv or info_desk."}},
+        "required": ["service"]}}})

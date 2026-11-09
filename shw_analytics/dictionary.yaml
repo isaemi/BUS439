@@ -93,14 +93,54 @@ coverage:
       Indigenous, racialized, racial background, first-generation, gender, trans experience, disability"
     - "Only students who used a service and chose to respond to the survey"
   not_yet:
-    - "Appointment counts, visits per student, referrals, no-shows (TELUS CHR records, not connected)"
-    - "Presenting concerns: reason for visit (Medical) and CLICC concerns (Counselling), from CHR"
-    - "Clinician capacity (direct-service hours)"
-    - "Trends over time: the data covers one survey period"
+    - "PHQ-9 scores, medication, presenting concerns (CLICC) and referrals: not in the CHR export yet"
+    - "International status in CHR (Fact 04/05 are empty in the export)"
+    - "Clinician capacity (direct-service hours), phone calls, students who couldn't be offered an appointment"
+    - "Time from first contact to first appointment (the export has appointment times only)"
+    - "Survey trends over time: the survey covers one period"
     - "Barriers for students who did not use services (they are not surveyed)"
+  # Added to 'available' when CHR appointment exports are loaded.
+  with_chr:
+    - "TELUS CHR appointments: service line, initial/follow-up, in person or phone/video, status
+      (attended, no-show, cancelled), date and time, length, faculty, level, program, gender,
+      age band; students are anonymised but consistent, so visits per student and days in care
+      can be counted"
+    - "Appointment trends by month and term, with same month last year"
+  # Added to 'not_yet' when no CHR export is loaded.
+  without_chr:
+    - "Appointment counts, visits per student, no-shows and trends (TELUS CHR export not loaded)"
   not_linkable:
     - "Survey responses cannot be linked to individual appointments. Survey and CHR data can
       only be compared by shared groups such as faculty and term."
+
+# TELUS CHR appointment export ("Appointments Bulk Export"). Column names are as
+# they appear in the export. Items marked CONFIRM need checking with SHW.
+chr:
+  columns:
+    "Appointments Appointment ID": appointment_id
+    "Appointments Respondent ID": patient_id
+    "Appointments Service": service_raw
+    "Service/Dx Code": dx_code
+    "Appointments Start Time": start_time
+    "Appointments Until Time": end_time
+    "Appointments Reason": reason
+    "Appointments Appointment Practitioner": practitioner
+    "Appointments Appointment Status": status
+    "Appointments Appointment Tag": tag              # CONFIRM meaning (e.g. E5)
+    "Appointments Locations Location Name": location
+    "Appointments Is Group Visit (Yes / No)": is_group
+    "Patient Data Fact Sheet Fact 01": faculty
+    "Patient Data Fact Sheet Fact 02": academic_level
+    "Patient Data Fact Sheet Fact 03": program
+    "Patient Data Fact Sheet Fact 04": fact_04        # CONFIRM: empty in the sample
+    "Patient Data Fact Sheet Fact 05": fact_05        # CONFIRM: empty in the sample
+    "Patient Data Fact Sheet Fact 06": gender
+    "Patients Age": age
+  # Which statuses count as attended / no-show / cancelled. Only note_signed was in
+  # the sample; the others are guesses. CONFIRM the full list with SHW.
+  attended: [note_signed, completed, arrived, checked_out]
+  no_show: [no_show, noshow, dna]
+  cancelled: [cancelled, canceled, late_cancel, late_cancelled]
 
 # Optional value labels: {question: {code: label}}. Empty until confirmed.
 value_labels: {}

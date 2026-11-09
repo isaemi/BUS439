@@ -39,10 +39,15 @@ def _respondent_scores(con, service=None, item_code=None):
 
 
 def service_summary(con):
-    df = con.execute("""SELECT service, COUNT(DISTINCT response_id) AS n,
-                               ROUND(AVG(score), 2) AS mean_score,
-                               ROUND(100 * AVG(CASE WHEN agree THEN 1 ELSE 0 END), 1) AS pct_agree
-                        FROM ratings GROUP BY service ORDER BY n DESC""").df()
+    """Per service: respondents, mean score and average agreement, each student counted once
+    (the same basis as compare_groups), so a service's figure and its groups' figures match."""
+    df = con.execute("""WITH per_student AS (
+                            SELECT service, response_id, AVG(score) AS ms,
+                                   AVG(CASE WHEN agree THEN 1 ELSE 0 END) AS ar
+                            FROM ratings GROUP BY service, response_id)
+                        SELECT service, COUNT(*) AS n, ROUND(AVG(ms), 2) AS mean_score,
+                               ROUND(100 * AVG(ar), 1) AS pct_agree
+                        FROM per_student GROUP BY service ORDER BY n DESC""").df()
     return suppress_small_cells(df)[0]
 
 
@@ -292,3 +297,224 @@ def composition(con, dimension, ids=None):
 def period_range(con):
     lo, hi = con.execute("SELECT MIN(recorded_at), MAX(recorded_at) FROM responses").fetchone()
     return lo, hi
+
+
+def group_vs_everyone(con, focus, service=None):
+    """One group compared with all respondents, overall and per service, with a
+    Mann-Whitney test of the group against everyone else (BH-corrected across
+    services). Same figures as the dashboard focus report."""
+    valid = focus_values(con, focus["dimension"])
+    if str(focus["value"]) not in valid:
+        raise ValueError(f"'{focus['value']}' is not a value of {focus['dimension']}. "
+                         f"Valid values: {', '.join(valid[:30])}")
+    ids = focus_ids(con, focus)
+    k = kpi_summary(con, ids, service)
+
+    def test(svc):
+        s = _respondent_scores(con, svc)
+        g, rest = s[s["response_id"].isin(ids)], s[~s["response_id"].isin(ids)]
+        if len(g) < config.MIN_CELL or len(rest) < config.MIN_CELL:
+            return None, len(g)
+        return float(mannwhitneyu(g["mean_score"], rest["mean_score"]).pvalue), len(g)
+
+    p_all, _ = test(service)
+    rows = []
+    for svc in ([service] if service else
+                con.execute("SELECT DISTINCT service FROM ratings ORDER BY 1").df()["service"]):
+        f = kpi_summary(con, ids, svc)
+        p, n = test(svc)
+        if n < config.MIN_CELL:
+            continue
+        rows.append({"service": svc, "n_group": n, "pct_agree_group": f["pct_agree"][0],
+                     "pct_agree_everyone": f["pct_agree"][1], "gap_pts": round(f["pct_agree"][0] - f["pct_agree"][1], 1),
+                     "mean_group": f["mean_score"][0], "mean_everyone": f["mean_score"][1], "p": p})
+    by_service = pd.DataFrame(rows)
+    if len(by_service):
+        by_service["q"] = _bh(by_service["p"].fillna(1)).round(4)
+        by_service["significant"] = by_service["q"] < 0.05
+        by_service["p"] = by_service["p"].round(4)
+    return {
+        "group": f"{focus['dimension']} = {focus['value']}",
+        "overall": {"n_group": k["respondents"][0], "n_everyone": k["respondents"][1],
+                    "pct_agree_group": k["pct_agree"][0], "pct_agree_everyone": k["pct_agree"][1],
+                    "mean_group": k["mean_score"][0], "mean_everyone": k["mean_score"][1],
+                    "p": round(p_all, 4) if p_all is not None else None,
+                    "significant": bool(p_all is not None and p_all < 0.05)},
+        "by_service": by_service,
+    }
+
+
+# CHR appointments: utilization, trends, explaining group differences, and how the
+# survey's respondents compare with who actually visits.
+
+CHR_DIMENSIONS = ["faculty", "academic_level", "gender", "age_band", "program", "service_line",
+                  "visit_type", "mode", "term"]
+
+
+def has_chr(con):
+    return bool(con.execute("SELECT COUNT(*) FROM duckdb_tables() WHERE table_name = 'appointments'").fetchone()[0])
+
+
+def chr_is_synthetic(con):
+    try:
+        return bool(con.execute("SELECT synthetic FROM chr_meta").fetchone()[0])
+    except Exception:
+        return False
+
+
+def _appts(con, service_line=None, term=None):
+    df = con.execute("SELECT * FROM appointments").df()
+    if service_line:
+        df = df[df["service_line"].str.lower() == service_line.lower()]
+        if df.empty:
+            raise ValueError(f"No CHR appointments for service line '{service_line}'.")
+    if term:
+        df = df[df["term"] == term]
+    return df
+
+
+def _per_student(df):
+    """One row per student: attended visits, days in care, services used, no-shows."""
+    att = df[df["outcome"] == "attended"]
+    g = att.groupby("student_key")
+    per = pd.DataFrame({
+        "visits": g.size(),
+        "days_in_care": (g["start_time"].max() - g["start_time"].min()).dt.days,
+        "services_used": g["service_line"].nunique(),
+    })
+    booked = df.groupby("student_key").agg(booked=("outcome", "size"),
+                                           no_shows=("outcome", lambda s: (s == "no_show").sum()))
+    return per.join(booked, how="outer").fillna({"visits": 0, "days_in_care": 0, "services_used": 0})
+
+
+def chr_summary(con, service_line=None, dimension=None, term=None):
+    """Students, booked and attended appointments, visits per student, no-show rate and
+    median days in care, overall or by group."""
+    df = _appts(con, service_line, term)
+    if dimension and dimension not in CHR_DIMENSIONS:
+        raise ValueError(f"Unknown dimension '{dimension}'. Use one of: {', '.join(CHR_DIMENSIONS)}")
+    groups = df.groupby(dimension, dropna=True) if dimension else [("All", df)]
+    rows = []
+    for key, d in groups:
+        per = _per_student(d)
+        seen = per[per["visits"] > 0]
+        rows.append({dimension or "group": str(key), "n_students": int(len(seen)),
+                     "appointments_booked": int(len(d)),
+                     "appointments_attended": int((d["outcome"] == "attended").sum()),
+                     "visits_per_student": round(seen["visits"].mean(), 2) if len(seen) else None,
+                     "median_days_in_care": float(seen["days_in_care"].median()) if len(seen) else None,
+                     "no_show_rate_pct": round(100 * (d["outcome"] == "no_show").mean(), 1) if len(d) else None})
+    out = pd.DataFrame(rows)
+    return out[out["n_students"] >= config.MIN_CELL].reset_index(drop=True)
+
+
+def chr_trend(con, service_line=None, freq="month"):
+    """Attended appointments and students per period, with the same period a year
+    earlier where it exists. A change is flagged only if it is at least 10% and
+    unlikely to be chance (two-sample Poisson test on the counts)."""
+    from scipy.stats import norm
+    df = _appts(con, service_line)
+    df = df[df["outcome"] == "attended"]
+    period = df["start_time"].dt.to_period({"month": "M", "week": "W", "term": "Q"}.get(freq, "M"))
+    if freq == "term":
+        period = df["term"]
+    g = df.groupby(period).agg(appointments=("appointment_key", "size"),
+                               n_students=("student_key", "nunique")).reset_index()
+    g.columns = ["period", "appointments", "n_students"]
+    g["period"] = g["period"].astype(str)
+    if freq == "month":
+        prev = {p: a for p, a in zip(g["period"], g["appointments"])}
+        def last_year(p):
+            y, m = p.split("-")
+            return prev.get(f"{int(y) - 1}-{m}")
+        g["same_month_last_year"] = g["period"].map(last_year)
+        a, b = g["appointments"], g["same_month_last_year"]
+        g["change_pct"] = (100 * (a - b) / b).round(1)
+        z = (a - b) / np.sqrt(a + b)
+        g["p"] = (2 * (1 - norm.cdf(np.abs(z)))).round(4)
+        g["notable_change"] = (g["p"] < 0.05) & (g["change_pct"].abs() >= 10)
+        g.loc[b.isna(), ["p", "notable_change"]] = [np.nan, False]
+    return g[g["n_students"] >= config.MIN_CELL].reset_index(drop=True)
+
+
+def explain_difference(con, dimension, group, compare_to=None, service_line=None, term=None):
+    """Break a difference in service use between two groups into its parts: how many
+    students come in, how many visits each makes, how long they stay in care, how many
+    services they use, and how often they miss appointments. Each part is tested."""
+    from scipy.stats import norm
+    if dimension not in CHR_DIMENSIONS:
+        raise ValueError(f"Unknown dimension '{dimension}'. Use one of: {', '.join(CHR_DIMENSIONS)}")
+    df = _appts(con, service_line, term)
+    values = sorted(df[dimension].dropna().astype(str).unique())
+    lookup = {v.lower(): v for v in values}
+    group = lookup.get(str(group).lower(), group)
+    compare_to = lookup.get(str(compare_to).lower(), compare_to) if compare_to else None
+    if str(group) not in values or (compare_to and str(compare_to) not in values):
+        raise ValueError(f"Valid values of {dimension}: {', '.join(values[:30])}")
+    a = df[df[dimension].astype(str) == str(group)]
+    b = df[df[dimension].astype(str) == str(compare_to)] if compare_to else df[df[dimension].astype(str) != str(group)]
+    pa, pb = _per_student(a), _per_student(b)
+    pa, pb = pa[pa["visits"] > 0], pb[pb["visits"] > 0]
+    if len(pa) < config.MIN_CELL or len(pb) < config.MIN_CELL:
+        raise ValueError(f"Fewer than {config.MIN_CELL} students in one of the groups")
+    label_b = str(compare_to) if compare_to else f"all other {dimension} groups"
+    rows = []
+    for name, col, fmt in [("Visits per student", "visits", "{:.2f}"),
+                           ("Days in care (first to last visit)", "days_in_care", "{:.0f}"),
+                           ("Services used per student", "services_used", "{:.2f}")]:
+        p = float(mannwhitneyu(pa[col], pb[col]).pvalue)
+        va, vb = pa[col].mean(), pb[col].mean()
+        rows.append({"measure": name, "group": round(va, 2), "comparison": round(vb, 2),
+                     "ratio": round(va / vb, 2) if vb else None, "p": round(p, 4), "significant": p < 0.05})
+    na, nb = (a["outcome"] == "no_show").sum(), (b["outcome"] == "no_show").sum()
+    ra, rb = na / len(a), nb / len(b)
+    pool = (na + nb) / (len(a) + len(b))
+    z = (ra - rb) / np.sqrt(pool * (1 - pool) * (1 / len(a) + 1 / len(b))) if 0 < pool < 1 else 0
+    p = float(2 * (1 - norm.cdf(abs(z))))
+    rows.append({"measure": "No-show rate (%)", "group": round(100 * ra, 1), "comparison": round(100 * rb, 1),
+                 "ratio": round(ra / rb, 2) if rb else None, "p": round(p, 4), "significant": p < 0.05})
+    measures = pd.DataFrame(rows)
+
+    # Total visits = students x visits per student, so the gap in totals splits exactly
+    # into "how many come in" and "how often each one comes".
+    va_tot, vb_tot = int(pa["visits"].sum()), int(pb["visits"].sum())
+    r_students, r_vps = len(pa) / len(pb), (va_tot / len(pa)) / (vb_tot / len(pb))
+    decomposition = {
+        "students": {"group": int(len(pa)), "comparison": int(len(pb)), "ratio": round(r_students, 2)},
+        "visits_per_student": {"group": round(va_tot / len(pa), 2), "comparison": round(vb_tot / len(pb), 2),
+                               "ratio": round(r_vps, 2)},
+        "total_visits": {"group": va_tot, "comparison": vb_tot, "ratio": round(va_tot / vb_tot, 2)},
+        "summary": (f"{group}: {len(pa):,} students vs {len(pb):,} for {label_b}, each attending "
+                    f"{va_tot / len(pa):.1f} visits vs {vb_tot / len(pb):.1f} ({r_vps:.1f}x), so total "
+                    f"visits are {va_tot:,} vs {vb_tot:,}."),
+    }
+    findings = []
+    for r in measures.itertuples():
+        if r.significant and r.ratio and abs(r.ratio - 1) >= 0.1:
+            direction = "higher" if r.ratio > 1 else "lower"
+            pv = "p < 0.001" if r.p < 0.001 else f"p = {r.p}"
+            findings.append(f"{r.measure} is {r.ratio:.1f}x {direction} for {dimension} = {group} "
+                            f"({r.group} vs {r.comparison}, {pv})")
+    return {"group": f"{dimension} = {group}", "comparison": label_b,
+            "service_line": service_line or "all services", "term": term or "all terms",
+            "measures": measures, "decomposition": decomposition, "findings": findings,
+            "not_in_data": ["PHQ-9 scores", "medication", "presenting concerns (CLICC)",
+                            "international status (Fact 04/05 empty in the export)"]}
+
+
+def survey_vs_visits(con, dimension="faculty"):
+    """Does the survey hear from the same mix of students who actually visit? Share of
+    survey respondents vs share of students seen in CHR, per group."""
+    if dimension != "faculty":
+        raise ValueError("Only faculty is recorded the same way in both sources so far.")
+    survey = con.execute("SELECT faculty AS grp, COUNT(DISTINCT response_id) AS n FROM response_faculty "
+                         "GROUP BY 1").df()
+    visits = con.execute("SELECT faculty AS grp, COUNT(DISTINCT student_key) AS n FROM appointments "
+                         "WHERE outcome = 'attended' AND faculty IS NOT NULL GROUP BY 1").df()
+    m = survey.merge(visits, on="grp", how="outer", suffixes=("_survey", "_visits")).fillna(0)
+    m["pct_of_survey"] = (100 * m["n_survey"] / m["n_survey"].sum()).round(1)
+    m["pct_of_visitors"] = (100 * m["n_visits"] / m["n_visits"].sum()).round(1)
+    m["representation_ratio"] = (m["pct_of_survey"] / m["pct_of_visitors"].replace(0, np.nan)).round(2)
+    m = m.rename(columns={"grp": "faculty", "n_survey": "n_respondents", "n_visits": "n_students_seen"})
+    m = m[(m["n_respondents"] >= config.MIN_CELL) | (m["n_students_seen"] >= config.MIN_CELL)]
+    return m.sort_values("representation_ratio").reset_index(drop=True)

@@ -7,3 +7,4 @@ numpy>=1.26
 streamlit>=1.36
 altair>=5
 paramiko>=3.2  # only for SFTP sync
+statsmodels>=0.14

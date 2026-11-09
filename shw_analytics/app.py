@@ -47,6 +47,23 @@ with st.sidebar:
             st.rerun()
         else:
             st.error((r.stderr or r.stdout).strip().splitlines()[-1])
+    chr_dir = config.DB_PATH.parent / "chr_exports"
+    chr_files = sorted(chr_dir.glob("*.csv")) if chr_dir.exists() else []
+    st.caption(f"{len(chr_files)} CHR export file(s) in data/chr_exports")
+    chr_uploads = st.file_uploader("Add CHR appointment exports (CSV)", type="csv",
+                                   accept_multiple_files=True, key="chr_upload")
+    if chr_uploads and st.button("Load CHR into the database"):
+        chr_dir.mkdir(parents=True, exist_ok=True)
+        stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        for i, f in enumerate(chr_uploads):
+            (chr_dir / f"chr_{stamp}_{i}.csv").write_bytes(f.getvalue())
+        with st.spinner("Rebuilding..."):
+            r = _rebuild()
+        if r.returncode == 0:
+            st.success("Database updated.")
+            st.rerun()
+        else:
+            st.error((r.stderr or r.stdout).strip().splitlines()[-1])
     if os.getenv("QUALTRICS_API_TOKEN") and st.button("Pull latest from Qualtrics"):
         with st.spinner("Exporting from Qualtrics..."):
             r = subprocess.run([sys.executable, "-m", "shw_analytics.qualtrics_api"],

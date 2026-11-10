@@ -1,7 +1,8 @@
 """Streamlit front end.  Run:  streamlit run app.py"""
 import streamlit as st
+import streamlit.components.v1 as components
 
-from shw_analytics import agent, analysis, charts, config, dashboard, tools
+from shw_analytics import agent, analysis, charts, config, dashboard, tools, figures
 
 st.set_page_config(page_title="SHW Feedback Assistant", layout="wide")
 st.title("SHW Student Feedback Assistant")
@@ -13,6 +14,7 @@ import gc
 import os
 import subprocess
 import sys
+import re
 
 EXPORTS = config.DB_PATH.parent / "exports"
 
@@ -30,7 +32,7 @@ with st.sidebar:
     st.subheader("Survey data")
     if config.DB_PATH.exists():
         built = _dt.datetime.fromtimestamp(config.DB_PATH.stat().st_mtime)
-        st.caption(f"Last updated {built:%b %-d, %Y %H:%M}")
+        st.caption(f"Last updated {built.strftime('%b')} {built.day}, {built:%Y %H:%M}")
     files = sorted(EXPORTS.glob("*.csv")) if EXPORTS.exists() else []
     st.caption(f"{len(files)} export file(s) in data/exports")
     uploads = st.file_uploader("Add Qualtrics exports (CSV, numeric values)", type="csv",
@@ -83,12 +85,18 @@ if not config.DB_PATH.exists():
 ask_tab, dash_tab, equity_tab, comments_tab, quality_tab = st.tabs(
     ["Ask a question", "Dashboards", "Equity flags", "Comments", "Data quality"])
 
+
 with ask_tab:
     if "turns" not in st.session_state:
         st.session_state.turns = []
+    if "figures" not in st.session_state:
+        st.session_state.figures = {}
+    store = st.session_state.figures
+
     c1, c2 = st.columns([1, 2])
-    if c1.button("New conversation", help="Clear earlier questions so they don't affect the next answer"):
+    if c1.button("New conversation", help="Clear earlier questions and graphics so they don't affect the next answer"):
         st.session_state.turns = []
+        st.session_state.figures = {}
         st.rerun()
     if st.session_state.turns and c2.button("Make a dashboard from this conversation"):
         request = "A dashboard covering these questions:\n" + "\n".join(
@@ -109,27 +117,55 @@ with ask_tab:
                 st.markdown(f"**{name}** `{args}`")
                 st.json(res, expanded=False)
 
-    for t in st.session_state.turns:
+    def show_graphics(ids, key_prefix):
+        for gid in ids:
+            g = store[gid]
+            if g.kind == "chart":
+                st.plotly_chart(g.fig, key=f"{key_prefix}_{gid}", width="stretch")
+                st.caption(f"**Graphic {gid}.** {g.caption}")
+            else:
+                components.html(g.html, height=700, scrolling=True)
+                st.download_button(f"Download Graphic {gid} (report)", g.html,
+                                   file_name=f"report_graphic_{gid}.html", mime="text/html",
+                                   key=f"{key_prefix}_dl_{gid}")
+
+    for n, t in enumerate(st.session_state.turns):
         st.chat_message("user").write(t["question"])
         with st.chat_message("assistant"):
             st.write(t["answer"])
+            show_graphics(t.get("graphics", []), f"h{n}")
             show_trace(t["trace"])
 
     if st.session_state.turns:
         st.caption(f"Follow-ups use the last {agent.MAX_TURNS} questions as context. "
-                   "Start a new conversation to change topic.")
+                   "Start a new conversation to change topic. "
+                   "To combine graphics, type e.g. \"make a report from graphics 1, 3 and 8\".")
+
     q = st.chat_input("e.g. How does counselling compare for first-generation students?")
     if q:
         st.chat_message("user").write(q)
-        with st.spinner("Thinking..."):
-            out = agent.ask(q, history=st.session_state.turns)
+        n = len(st.session_state.turns)
+        wanted = figures.parse_report_request(q)
+        if wanted:  # no model call: the report is plain code
+            try:
+                gid = figures.build_report(wanted, store)
+                answer, gids = f"Created Graphic {gid}, a report built from graphics {wanted}.", [gid]
+            except KeyError as e:
+                answer, gids = f"{e.args[0]} Existing graphics: {sorted(store)}.", []
+            out = {"answer": answer, "trace": []}
+        else:
+            with st.spinner("Thinking..."):
+                out = agent.ask(q, history=st.session_state.turns)
+            gids = figures.register_from_trace(out["trace"], store)
         with st.chat_message("assistant"):
             st.write(out["answer"])
+            show_graphics(gids, f"h{n}")
             show_trace(out["trace"])
-        st.session_state.turns.append({"question": q, "answer": out["answer"], "trace": out["trace"]})
+        st.session_state.turns.append({"question": q, "answer": out["answer"],
+                                       "trace": out["trace"], "graphics": gids})
+
 
 with dash_tab:
-    import streamlit.components.v1 as components
     source = st.radio("Start from", ["Template", "Describe it", "Saved"], horizontal=True)
     spec = None
     if source == "Template":

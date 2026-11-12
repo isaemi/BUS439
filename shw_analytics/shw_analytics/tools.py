@@ -350,6 +350,210 @@ def wait_time_vs_rating(service: str):
     return out
 
 
+# Semantic aliases are suggestions, not substitutes for live survey metadata.
+# A match is returned only if the expected item wording exists for this service.
+_SURVEY_CONCEPTS = {
+    "wellness_adv": (
+        {
+            "canonical_text": "I was able to book an appointment easily",
+            "aliases": (
+                "difficulty booking", "difficult to book", "problems booking",
+                "trouble booking", "issues scheduling", "hard to book",
+                "struggle to book", "struggling to book", "struggling to schedule",
+                "trouble scheduling", "booking difficulty", "booking ease",
+                "easy to book", "ease of booking", "appointment scheduling",
+                "scheduling problems", "hard to get an appointment",
+                "difficult to make an appointment", "problems making an appointment",
+            ),
+            "negative_responses": [1, 2],
+            "polarity": "Positive wording: disagreement indicates reported booking difficulty.",
+        },
+        {
+            "canonical_text": "Overall, I am satisfied with the support I received",
+            "aliases": (
+                "overall satisfaction", "less satisfied", "more satisfied",
+                "satisfied with the support", "satisfaction with support",
+                "satisfied with the help", "unhappy with support",
+                "support they receive", "support received",
+            ),
+            "negative_responses": [1, 2],
+            "polarity": "Positive wording: higher ratings indicate greater overall satisfaction. Two identically worded items may exist; check paired data before choosing.",
+        },
+    ),
+    "counselling": (
+        {
+            "canonical_text": "I was able to book an appointment easily",
+            "aliases": (
+                "difficulty booking", "difficult to book", "problems booking",
+                "trouble booking", "issues scheduling", "hard to book",
+                "struggle to book", "struggling to schedule",
+                "booking difficulty", "booking ease", "easy to book",
+                "appointment scheduling", "scheduling problems",
+            ),
+            "negative_responses": [1, 2],
+            "polarity": "Positive wording: disagreement indicates reported booking difficulty.",
+        },
+    ),
+}
+
+
+def _normalise_item_phrase(value):
+    return re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
+
+
+def _alias_candidates(service, query, rows):
+    """Find concept aliases, then verify against the live item catalogue."""
+    normal_query = _normalise_item_phrase(query)
+    found = {}
+    for concept in _SURVEY_CONCEPTS.get(service.lower(), ()):
+        if not any(_normalise_item_phrase(p) in normal_query for p in concept["aliases"]):
+            continue
+        expected = _normalise_item_phrase(concept["canonical_text"])
+        for code, item_text in rows:
+            actual = _normalise_item_phrase(item_text)
+            if actual == expected or actual.endswith(expected):
+                found[code] = {
+                    "item_code": code,
+                    "item_text": item_text,
+                    "matched_by": "verified_semantic_alias",
+                    "negative_responses": concept["negative_responses"],
+                    "response_interpretation": concept["polarity"],
+                }
+    return found
+
+
+def lookup_survey_items(service: str, query: str = None):
+    """Search live survey items using verified concept aliases plus text overlap."""
+    con = _con()
+    rows = con.execute(
+        "SELECT item_code, item_text FROM items WHERE service = ? ORDER BY item_code",
+        [service]).fetchall()
+    if not query:
+        return {"service": service, "items": [
+            {"item_code": code, "item_text": text} for code, text in rows],
+            "note": "Live survey catalogue. Verify the intended concept before analysis."}
+
+    aliases = _alias_candidates(service, query, rows)
+    words = re.findall(r"[a-z0-9]+", query.lower())
+    stop = {"i", "a", "an", "the", "to", "of", "with", "and", "in",
+            "my", "was", "is", "are", "about", "received", "overall"}
+    terms = [w for w in words if w not in stop and len(w) > 2]
+    scored = sorted(
+        ((sum(w in (item_text or "").lower() for w in terms), code, item_text)
+         for code, item_text in rows),
+        key=lambda x: (-x[0], x[1]))
+    items = list(aliases.values())
+    for score, code, item_text in scored:
+        if score > 0 and code not in aliases:
+            items.append({"item_code": code, "item_text": item_text,
+                          "matched_by": "text_overlap"})
+        if len(items) >= 12:
+            break
+    return {"service": service, "items": items,
+            "note": "Aliases are verified against live item wording. A low score is not automatically recoded; preserve all five Likert categories for association tests. If multiple plausible items remain, clarify."}
+
+
+def _verified_item_code(service, value):
+    """Require a real code, or resolve only an unambiguous exact item wording."""
+    if not isinstance(value, str):
+        return None
+    rows = lookup_survey_items(service)["items"]
+    for row in rows:
+        if value.strip().upper() == row["item_code"].upper():
+            return row["item_code"]
+    def normalise(s):
+        return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+    needle = normalise(value)
+    matches = [row["item_code"] for row in rows
+               if normalise(row["item_text"]) == needle or
+               (len(needle) >= 18 and normalise(row["item_text"]).endswith(needle))]
+    return matches[0] if len(matches) == 1 else None
+
+
+def test_association(service: str, outcome_item: str, predictor_column: str = None,
+                     predictor_item: str = None, predictor_order: list = None,
+                     outcome_order: list = None):
+    """Compute association statistics internally, returning only privacy-filtered aggregates."""
+    outcome_code = _verified_item_code(service, outcome_item)
+    predictor_code = _verified_item_code(service, predictor_item) if predictor_item is not None else None
+    if not outcome_code or (predictor_item is not None and not predictor_code):
+        return {"error": "Survey item not verified. Call lookup_survey_items for this service and choose exact item codes before retrying.",
+                "service": service, "outcome_verified": bool(outcome_code),
+                "predictor_verified": predictor_item is None or bool(predictor_code)}
+    try:
+        return analysis.test_association(_con(), service, outcome_code, predictor_column,
+                                         predictor_code, predictor_order, outcome_order)
+    except (ValueError, KeyError) as e:
+        return {"error": str(e)}
+
+
+def demographic_association(service: str, outcome_item: str, dimension: str,
+                            category: str = None):
+    """Chi-square association between demographic category and survey rating."""
+    try:
+        outcome_code = _verified_item_code(service, outcome_item)
+        if not outcome_code:
+            return {"error": "Survey outcome item not verified. Call lookup_survey_items and use an exact item code."}
+        result = analysis.demographic_association(_con(), service, outcome_code, dimension, category)
+        if not isinstance(result, dict) or "results" not in result:
+            return result
+        # Keep every category's statistical summary in the model context. Full
+        # contingency tables would otherwise consume the tool response budget.
+        # The underlying analysis and privacy suppression are unchanged.
+        compact = []
+        for row in result["results"]:
+            keys = ("category", "n", "chi_square", "degrees_of_freedom",
+                    "p_value", "q_value", "cramers_v", "significant_after_correction",
+                    "error", "privacy_suppressed")
+            compact.append({key: row[key] for key in keys if key in row})
+        return {**result, "results": compact,
+                "result_format": "All category statistics included; contingency tables omitted to avoid truncation."}
+    except (ValueError, KeyError) as e:
+        return {"error": str(e)}
+
+
+def test_uploaded_categories(frame: pd.DataFrame, predictor: str, outcome: str, source: str = "CHR upload"):
+    """Integration hook for the existing drag-and-drop upload handler.
+
+    Call this with the uploaded CHR DataFrame. Do not register as an LLM tool
+    until the upload handler supplies a trusted per-session DataFrame.
+    """
+    try:
+        return analysis.categorical_association(frame, predictor, outcome, source)
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+def chr_categorical_association(predictor: str, outcome: str, service_line: str = None):
+    """Student-level CHR association, with one observation per student."""
+    allowed = {"faculty", "academic_level", "gender", "age_band", "program",
+               "service_line", "visit_type", "mode", "outcome", "term"}
+    if predictor not in allowed or outcome not in allowed:
+        return {"error": "Choose two permitted CHR categorical variables: " + ", ".join(sorted(allowed))}
+    if predictor == outcome:
+        return {"error": "Choose two different variables."}
+    con = _con()
+    if not analysis.has_chr(con):
+        return {"error": "No CHR appointments loaded. Upload CHR CSV and rebuild first."}
+    where = 'WHERE service_line = ?' if service_line else ''
+    params = [service_line] if service_line else []
+    df = con.execute(f'SELECT student_key, "{predictor}" AS predictor, "{outcome}" AS outcome '
+                     f'FROM appointments {where}', params).df()
+    df = df.dropna(subset=['student_key'])
+    # Multiple appointments for a student are not independent observations.
+    # Only allow student attributes that are stable within each student's records.
+    if df.groupby('student_key')[['predictor','outcome']].nunique(dropna=True).gt(1).any().any():
+        return {"error": "At least one student has multiple values for a selected CHR variable. "
+                         "An appointment-level chi-square would violate independence; "
+                         "select stable student-level variables or use a different method."}
+    df = df.drop_duplicates('student_key')
+    try:
+        return analysis.categorical_association(df, 'predictor', 'outcome',
+                 source='CHR student-level records' + (f'; {service_line}' if service_line else ''))
+    except ValueError as e:
+        return {"error": str(e)}
+
+
 def equity_flags(service: str = None, dimension: str = None):
     tests, flags, thin = analysis.equity_scan(_con(), service)
     if dimension and len(tests):
@@ -458,6 +662,17 @@ TOOL_SPECS = [
         {"dimension": {"type": "string"}}),
     _fn("wait_time_vs_rating", "How appointment wait time relates to ratings (medical or counselling).",
         {"service": _SVC}, ["service"]),
+    _fn("test_association", "Chi-square independence and Cramer's V for two verified Qualtrics rating items, paired by student. Use predictor_item and outcome_item; do not guess codes. Privacy-suppressed cells block statistics. Report association, not causation.",
+        {"service": _SVC, "outcome_item": {"type": "string"},
+         "predictor_item": {"type": "string"}, "predictor_column": {"type": "string"}},
+        ["service", "outcome_item"]),
+    _fn("demographic_association", "Chi-square association of a demographic dimension with a verified survey rating item. For single-choice demographics runs one omnibus test; for multi-select demographics (faculty, disability, racial_background, identity_d15) runs separate selected-versus-not-selected tests per category with BH correction. Use for faculty versus satisfaction. Privacy suppression can block results. Never treat overlapping selections as mutually exclusive.",
+        {"service": _SVC, "outcome_item": {"type": "string"},
+         "dimension": {"type": "string"}, "category": {"type": "string"}},
+        ["service", "outcome_item", "dimension"]),
+    _fn("chr_categorical_association", "Chi-square independence for two CHR categorical variables, one record per student; only stable student-level categories supported. CHR upload must already be loaded.",
+        {"predictor": {"type": "string"}, "outcome": {"type": "string"},
+         "service_line": {"type": "string"}}, ["predictor", "outcome"]),
     _fn("equity_flags", "Statistically tested gaps between demographic groups (FDR-corrected).",
         {"service": _SVC, "dimension": {"type": "string", "description": "optional equity dimension"}}),
     _fn("search_comments", "Find open-text comments about a topic.",
@@ -469,7 +684,7 @@ TOOL_SPECS = [
         {"sql": {"type": "string"}}, ["sql"]),
 ]
 
-REGISTRY = {"describe_data": describe_data, "service_summary": service_summary,
+REGISTRY = {"lookup_survey_items": lookup_survey_items, "demographic_association": demographic_association, "test_association": test_association, "chr_categorical_association": chr_categorical_association, "describe_data": describe_data, "service_summary": service_summary,
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
@@ -516,6 +731,11 @@ def call(name, args):
         return fn(**args)
     except TypeError as e:
         return {"error": f"Bad arguments for {name}: {e}. It takes: {', '.join(params)}."}
+
+
+TOOL_SPECS.append(_fn("lookup_survey_items",
+    "FIRST look up the actual survey item codes and full question wording for a service before calling test_association or demographic_association. Return verified items from the live database, not guesses. Omit query to list all service items.",
+    {"service": _SVC, "query": {"type": "string", "description": "Optional phrase to search; omit to list every question for this service."}}, ["service"]))
 
 
 TOOL_SPECS.append({"type": "function", "function": {

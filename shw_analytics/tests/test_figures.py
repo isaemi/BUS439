@@ -59,6 +59,19 @@ def test_tested_findings_come_first_and_descriptive_last():
     assert len(more) == len(ids) - figures.SHOWN_FIRST
 
 
+def test_charts_follow_what_the_answer_talks_about():
+    ns = _step("noshow_patterns")[2]["flags"][0]
+    answer = (f"Phone and video appointments were missed {ns['no_show_pct']}% of the time, "
+              f"{abs(ns['gap_vs_others_pts'])} points more than others ({ns['appointments']:,} appointments).")
+    store = {}
+    ids = figures.register_from_trace(TRACE, store, answer=answer)
+    assert store[ids[0]].source == "noshow_patterns"                 # quoted in the answer, so shown first
+    weights = [store[i].weight for i in ids]
+    assert weights == sorted(weights, reverse=True)                   # tested findings still come before the rest
+    plain = figures.register_from_trace(TRACE, {})
+    assert {store[i].title for i in ids} == {t for t in [g.title for g in store.values()]} and len(ids) == len(plain)
+
+
 def test_same_question_twice_does_not_duplicate_graphics():
     store = {}
     a = figures.register_from_trace(TRACE, store)

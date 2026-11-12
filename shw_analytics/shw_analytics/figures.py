@@ -918,9 +918,21 @@ BUILDERS = {"what_changed": _what_changed, "noshow_patterns": _noshow, "care_jou
 
 # ---- registry ------------------------------------------------------------------------
 
-def register_from_trace(trace, store):
+_COMMON_NUMBERS = {"30", "60", "100", "95", "2024", "2025", "2026", "2027"}
+
+
+def _mentions(graphic, answer):
+    """How many of a graphic's own figures the answer quotes (so its chart belongs with the answer)."""
+    def nums(text):
+        text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", str(text))
+        return {n for n in re.findall(r"\d+(?:\.\d+)?", text) if len(n) >= 2 and n not in _COMMON_NUMBERS}
+    return len(nums(graphic.title + " " + graphic.caption) & nums(answer))
+
+
+def register_from_trace(trace, store, answer=None):
     """trace = [(tool_name, args, result), ...]. Returns ids of graphics for this answer, most
-    useful first: tested findings, then trends and patterns, then descriptive breakdowns.
+    useful first: tested findings, then trends and patterns, then descriptive breakdowns. Given
+    the answer's text, graphics whose figures the answer quotes come before those it does not.
     The same chart asked for twice gives the same graphic, not a duplicate. A chart that
     fails to draw is skipped rather than breaking the answer."""
     found = []
@@ -945,7 +957,10 @@ def register_from_trace(trace, store):
                                            args={**(args or {}), "_key": key}, scope=spec.scope, weight=spec.weight)
             if all(hit.id != g.id for g in found):
                 found.append(hit)
-    found.sort(key=lambda g: -g.weight)        # stable: keeps the order of the analysis within a weight
+    if answer:                                 # within a weight, what the answer talks about comes first
+        found.sort(key=lambda g: (-g.weight, -_mentions(g, answer)))
+    else:
+        found.sort(key=lambda g: -g.weight)    # stable: keeps the order of the analysis within a weight
     return [g.id for g in found]
 
 

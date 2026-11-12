@@ -212,13 +212,16 @@ with ask_tab:
 
     if st.session_state.turns:      # related questions under the latest answer, side by side
         last = st.session_state.turns[-1]
-        ideas = followups.suggest(last["trace"], asked=[t["question"] for t in st.session_state.turns],
-                                  limit=2, include_sources=False)
+        # One step deeper on what was just found, and (once a briefing exists) a tested finding
+        # about the same service that has not come up yet.
+        ideas = followups.suggest_detail(last["trace"], asked=[t["question"] for t in st.session_state.turns],
+                                         history=[t["trace"] for t in st.session_state.turns[:-1]], limit=2)
         if ideas:
             st.caption("Related questions")
-            for col, (i, text) in zip(st.columns(len(ideas)), enumerate(ideas)):
-                if col.button(text, key=f"fu{len(st.session_state.turns)}_{i}", width="stretch"):
-                    st.session_state.pending_q = text
+            for col, (i, idea) in zip(st.columns(len(ideas)), enumerate(ideas)):
+                if col.button(idea["text"], key=f"fu{len(st.session_state.turns)}_{i}", width="stretch",
+                              help=idea["why"] or None):
+                    st.session_state.pending_q = idea["text"]
                     st.rerun()
 
     if st.session_state.turns:

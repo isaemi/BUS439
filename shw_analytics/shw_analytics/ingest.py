@@ -27,7 +27,18 @@ from .privacy import scrub_text
 
 def load_dictionary(path=None):
     with open(path or config.DICTIONARY_PATH) as f:
-        return yaml.safe_load(f)
+        d = yaml.safe_load(f)
+    # Answer labels kept with the data (data/value_labels.yaml, e.g. for a synthetic export) fill
+    # in whatever dictionary.yaml does not define. Labels in dictionary.yaml always win.
+    extra = config.DB_PATH.parent / "value_labels.yaml"
+    if path is None and extra.exists():
+        with open(extra) as f:
+            more = (yaml.safe_load(f) or {}).get("value_labels") or {}
+        merged = {q: {str(k): v for k, v in labels.items()} for q, labels in more.items()}
+        for q, labels in (d.get("value_labels") or {}).items():
+            merged.setdefault(q, {}).update({str(k): v for k, v in labels.items()})
+        d["value_labels"] = merged
+    return d
 
 
 def read_qualtrics(path):

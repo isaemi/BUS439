@@ -319,6 +319,14 @@ def priority_items(service: str):
         return {"error": str(e)}
 
 
+def term_briefing():
+    from . import briefing
+    try:
+        return briefing.for_chat()
+    except Exception as e:
+        return {"error": f"The briefing could not be built: {e}"}
+
+
 def survey_vs_visits(dimension: str = "faculty"):
     con, err = _need_chr()
     if err:
@@ -473,7 +481,7 @@ REGISTRY = {"describe_data": describe_data, "service_summary": service_summary,
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
-            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
+            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "term_briefing": term_briefing, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
             "comment_overview": comment_overview, "run_sql": run_sql}
 
 
@@ -585,10 +593,22 @@ TOOL_SPECS.append({"type": "function", "function": {
     "description": (
         "Key-driver analysis for one service's survey: which questions are most closely linked "
         "to students' overall rating of the service (satisfaction, or recommending), combined with "
-        "how well each scores. Returns 'fix first' priorities only when they are stable across "
+        "how well each scores. Returns priorities only when they are stable across "
         "re-samples of students, or says no single question stands out. Use for 'what should we "
         "focus on', 'what matters most', 'is the lowest-scoring area what hurts satisfaction'. "
         "Say 'most closely linked to', never 'drives'."),
     "parameters": {"type": "object", "properties": {
         "service": {"type": "string", "description": "counselling, medical, wellness_adv or info_desk."}},
         "required": ["service"]}}})
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "term_briefing",
+    "description": (
+        "The term briefing: runs every tested analysis across services (change since the same dates "
+        "last year, missed appointments, returning after a first visit, what matters most in the "
+        "survey, gaps between groups), corrects for having run them all, and returns the findings "
+        "that held up, ranked, plus what stayed the same and what could not be checked. Use for "
+        "'what should we know', 'headline findings', 'what should leadership know', 'anything "
+        "surprising', 'where should we focus'. One call is enough; do not re-run the analyses."),
+    "parameters": {"type": "object", "properties": {}, "required": []}}})

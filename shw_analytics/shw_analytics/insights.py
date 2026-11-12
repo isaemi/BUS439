@@ -179,7 +179,8 @@ def what_changed(con, metric: str, dimension: str, service_line: str = None,
 
     df = _appts(con, service_line)
     df = df.assign(start_time=pd.to_datetime(df["start_time"]))
-    (a0, a1), (b0, b1) = _windows(df["start_time"], compare, int(window_days))
+    span = pd.to_datetime(_appts(con)["start_time"]) if service_line else df["start_time"]
+    (a0, a1), (b0, b1) = _windows(span, compare, int(window_days))
     day = df["start_time"].dt.normalize()
     period = np.select([day.between(a0, a1), day.between(b0, b1)], ["before", "after"], default="")
     df = df.assign(period=period)

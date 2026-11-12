@@ -13,34 +13,34 @@ use_cases:
 
 - id: digest
   title: What should we know this term?
-  status: partial
+  status: ready
   audience: SHW leadership, service managers
   questions:
     - What should we know this term?
     - Is there anything surprising in the data?
     - Where should we focus?
     - Give me the headline findings.
-  keywords: [headline, surprising, focus, priorities, overview, insights, summary, notable]
+    - What should leadership know before the meeting?
+  keywords: [headline, surprising, focus, priorities, overview, insights, summary, notable, leadership, briefing, should know, three things]
   why: >
-    Leaders asked for findings they cannot get from the dashboard. A short list of tested,
-    sizeable findings is more useful than many descriptive numbers.
+    Leaders asked for findings they cannot get from the dashboard. The term briefing runs every
+    tested analysis, corrects for having run them all, and keeps only what holds up.
   steps:
-    - {tool: what_changed, args: {metric: no_show_rate, dimension: academic_level}, purpose: tested change since last year, plus tested change in students seen}
-    - {tool: what_changed, args: {metric: visits_per_student, dimension: faculty}, purpose: whether students use services differently}
-    - {tool: noshow_patterns, purpose: which appointments are missed more often}
-    - {tool: care_journeys, args: {dimension: academic_level}, purpose: continuity after a first visit, by group}
-    - {tool: equity_flags, purpose: tested gaps in survey ratings between groups}
+    - {tool: term_briefing, purpose: "the ranked findings, what stayed the same, and what could not be checked"}
   read: >
-    Keep only results that passed a test (a verdict other than "no clear change", or a flag).
-    Rank by size of the difference. Report 3 to 5 findings, then one line listing what did NOT
-    change, which is also useful to leaders.
+    Report the findings in the order given, each with its figures, dates and group sizes. Then
+    say what stayed the same and, briefly, what could not be checked. Do not add findings of
+    your own or re-run the analyses.
   avoid:
-    - Listing descriptive counts as findings.
-    - Reporting a flag without its group size.
-    - Comparing a term that is still in progress with a complete one.
+    - Adding descriptive numbers as extra findings.
+    - Dropping the "what stayed the same" part; it matters to leaders.
+    - Explaining why something happened.
   say: >
-    Lead with the finding in one sentence, then the numbers with group sizes, then "worth a
-    closer look" rather than a cause. Close with what stayed the same.
+    Number the findings. One sentence for the finding, one for the figures, one for what is
+    worth checking next. Close with what stayed the same.
+  next:
+    - Which of those findings is the most reliable?
+    - What data would make this briefing better?
 
 - id: real_change_or_mix
   title: Is a change real, or just different students coming?
@@ -69,6 +69,9 @@ use_cases:
   say: >
     "Over the same dates (X vs Y), the rate went from A to B. Most of that is [a change in who
     came / a change within groups]; [neither part is distinguishable from noise]."
+  next:
+    - Which groups changed most?
+    - Is it the same for counselling alone?
 
 - id: demand_growth
   title: Where is the growth in demand coming from?
@@ -95,6 +98,9 @@ use_cases:
   say: >
     "Students seen rose X% (range A% to B%); visits per student did not clearly change, so the
     extra appointments are accounted for by more students."
+  next:
+    - Are the extra students coming back for second visits at the usual rate?
+    - When are our busiest weeks?
 
 - id: after_first_visit
   title: What happens after a student's first visit?
@@ -123,6 +129,9 @@ use_cases:
     "Of N students starting counselling between X and Y, A% had a single visit in the next 60
     days. Graduate students were B points [more/less] likely to have a single visit. Whether
     that reflects planned single-session care is a question for the clinical team."
+  next:
+    - Do students who miss an appointment come back?
+    - What are students saying about follow-up?
 
 - id: missed_then_lost
   title: Do students come back after missing an appointment?
@@ -143,6 +152,8 @@ use_cases:
     - Assuming students who did not return stopped needing care.
   say: >
     "Of N students who missed a counselling appointment, A% attended another within 60 days."
+  next:
+    - Which appointments are missed most often?
 
 - id: noshow_hotspots
   title: Which appointments are missed most often?
@@ -169,6 +180,9 @@ use_cases:
     "Phone/video appointments were missed X points more often than others (range A to B). This
     is a pattern worth testing reminders against, not proof of cause."
   data_gaps: [Booking date for each appointment, to measure lead time]
+  next:
+    - Do students who miss an appointment come back?
+    - Has the no-show rate changed since last year?
 
 - id: integrated_care_pathways
   title: Are students moving between services as intended?
@@ -192,6 +206,8 @@ use_cases:
   say: >
     "Of N students starting with the medical clinic, A% (range B% to C%) had a counselling
     visit within 30 days."
+  next:
+    - What happens after a student's first counselling visit?
 
 - id: intensity_by_group
   title: Do some groups use services more intensively?
@@ -271,6 +287,8 @@ use_cases:
     "We can describe who is seen, but not yet who is missing: that needs enrolment numbers by
     group from UBC."
   data_gaps: [Enrolment counts by faculty, level, international and first-generation status]
+  next:
+    - What data would let us say whether a group is under-served?
 
 - id: survey_weak_spots
   title: Which parts of a service experience matter most, and need attention?
@@ -288,7 +306,7 @@ use_cases:
     analysis links each question to the service's overall question (satisfaction, or
     recommending) and combines that with how well it scores.
   steps:
-    - {tool: priority_items, args: {service: counselling}, purpose: fix-first questions with stability}
+    - {tool: priority_items, args: {service: counselling}, purpose: priorities that hold up when students are re-sampled}
     - {tool: search_comments, args: {query: "the top priority's topic", service: counselling}, purpose: students' own words on the priority}
   read: >
     Lead with the verdict. clear_priorities: name each priority with its link, % agree and n.
@@ -297,12 +315,16 @@ use_cases:
     understated.
   avoid:
     - Saying a question "drives" satisfaction; say "most closely linked to".
+    - Telling staff what to do ("fix first", "keep it up"); describe priorities and strengths and leave the decision to them.
     - Treating the lowest-scoring question as the priority without the link.
     - Running it for a service with too few respondents (the tool will decline; pass that on).
   say: >
     "Of the questions about counselling, 'X' is most closely linked to overall satisfaction
-    (link 0.62) but only A% agree (n=N), so it is the clearest place to start. 'Y' scores
+    (link 0.62), and A% agree (n=N), which makes it the clearest priority. 'Y' scores
     well and is also closely linked: a strength to keep."
+  next:
+    - What matters most to students in the medical clinic?
+    - Do some groups of students rate counselling lower?
 
 - id: survey_equity_gaps
   title: Do some student groups rate services lower?
@@ -320,6 +342,8 @@ use_cases:
   avoid:
     - Reporting untested differences from compare_groups as gaps.
   say: '"Of N comparisons checked, two gaps stood out: ..."'
+  next:
+    - What matters most to students in counselling?
 
 - id: hidden_subgroups
   title: Are there groups having a very different experience that we would not notice?

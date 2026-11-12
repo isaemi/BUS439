@@ -304,6 +304,9 @@ def group_vs_everyone(con, focus, service=None):
     Mann-Whitney test of the group against everyone else (BH-corrected across
     services). Same figures as the dashboard focus report."""
     valid = focus_values(con, focus["dimension"])
+    same = {str(v).strip().lower(): v for v in valid}.get(str(focus["value"]).strip().lower())
+    if same is not None:                          # "graduate" finds "Graduate"
+        focus = {**focus, "value": same}
     if str(focus["value"]) not in valid:
         raise ValueError(f"'{focus['value']}' is not a value of {focus['dimension']}. "
                          f"Valid values: {', '.join(valid[:30])}")

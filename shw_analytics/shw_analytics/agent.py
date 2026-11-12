@@ -151,8 +151,15 @@ AGREE_RULE = (
     "agreed with 39% of the counselling questions', never '39% of students agreed'.")
 
 
+PLAIN_RULE = (
+    "\n\nPlain numbers: staff are not statisticians. Never write p-values, q-values, 'CI' or "
+    "'confidence interval'. Say whether a difference was tested and is real, or is within noise, "
+    "and give the range in words, e.g. '22.8% more students (range 8.6% to 38.8%)'. Write date "
+    "windows as '1 Sep to 31 Oct'.")
+
+
 def _system(json_mode):
-    s = SYSTEM.format(min_cell=config.MIN_CELL, overview=_overview()) + PERIOD_RULE + INSIGHT_RULE + EVIDENCE_RULE + AGREE_RULE
+    s = SYSTEM.format(min_cell=config.MIN_CELL, overview=_overview()) + PERIOD_RULE + INSIGHT_RULE + EVIDENCE_RULE + AGREE_RULE + PLAIN_RULE
     if json_mode:
         tl = "\n".join(f"- {t['function']['name']}({', '.join(t['function']['parameters']['properties'])}): "
                        f"{t['function']['description']}" for t in tools.TOOL_SPECS)
@@ -270,7 +277,7 @@ _SIG_NOT_A_CLAIM = re.compile(
 
 # Tools that test with confidence intervals rather than p-values. A successful result from
 # one of these counts as a significance test for the "no test was run" warning.
-INTERVAL_TOOLS = {"priority_items", "what_changed", "care_journeys", "noshow_patterns", "service_pathways"}
+INTERVAL_TOOLS = {"term_briefing", "priority_items", "what_changed", "care_journeys", "noshow_patterns", "service_pathways"}
 
 
 def _has_interval_test(steps):
@@ -306,6 +313,8 @@ def _has_test(trace):
 
 
 def _finalise(answer, trace, mode, ctx=()):
+    from .plain import plain_stats
+    answer = plain_stats(answer)
     bad = ungrounded_numbers(answer, list(ctx) + trace)
     if bad:
         answer += (f"\n\n⚠️ Check before using: these figures could not be traced to the data: "
@@ -649,3 +658,35 @@ if __name__ == "__main__":
     for name, args, res in out["trace"]:
         print(f"[{name}] {args}")
     print("\n" + out["answer"])
+
+
+# ---- answer hygiene (added by scripts/install_answer_hygiene.py) ----------------------
+# 1) Numbers written the way people write them ("1,717", "9.1e-05") are read as one number before
+#    they are checked against the tool results, so correct figures are not flagged.
+# 2) When the model is asked to rewrite an answer, it must return the answer only. Staff never see
+#    the request, so "good catch, I re-checked..." makes no sense to them.
+_THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+_SCI = re.compile(r"(?<![\w.])\d+(?:\.\d+)?[eE][-+]?\d+")
+_check_numbers = ungrounded_numbers
+
+
+def ungrounded_numbers(answer, trace):
+    text = _THOUSANDS.sub("", answer or "")
+    sci = _SCI.findall(text)
+    bad = list(_check_numbers(_SCI.sub(" ", text), trace))
+    if sci:
+        blob = json.dumps([s[2] for s in trace if isinstance(s, (tuple, list)) and len(s) == 3], default=str)
+        bad += [x for x in sci if x not in blob]
+    return sorted(set(bad))
+
+
+_ANSWER_ONLY = (" Reply with the complete answer for the staff member and nothing else: do not mention this "
+                "note, and do not say that anything was checked again, corrected or removed.")
+for _name in ("NO_TOOL_NUDGE", "OFF_TOPIC_NUDGE", "HANDOFF_NUDGE", "ITEM_CODE_NUDGE", "FINAL_NUDGE"):
+    if _name in globals():
+        globals()[_name] = globals()[_name] + _ANSWER_ONLY
+_retry_msg = _grounding_retry_msg
+
+
+def _grounding_retry_msg(bad):
+    return _retry_msg(bad) + _ANSWER_ONLY

@@ -104,10 +104,16 @@ TOOLS = {
     "priority_items": ("What matters most to students' overall view{for_service}", "survey",
                        "For each survey question, measured how closely students' answers move "
                        "with their overall rating of the service, and combined that with how "
-                       "well the question scores. 'Fix first' = closely linked but scoring low.",
+                       "well the question scores. A priority = closely linked but scoring low.",
                        "Checked by re-sampling students 1,000 times; a question is only called a "
-                       "priority if it stays in 'fix first' and is clearly more linked than a "
+                       "priority if it holds up and is clearly more linked than a "
                        "typical question."),
+    "term_briefing": ("The term briefing: a fixed set of tested analyses", "both",
+                      "Ran the full set of tested analyses across services (change since the same dates "
+                      "last year, missed appointments, returning after a first visit, what matters most "
+                      "in the survey, gaps between groups), then kept and ranked what held up.",
+                      "Each analysis is tested on its own, and the findings that pass are checked again "
+                      "together, so that producing several findings at once does not let a chance result in."),
     "insight_playbook": ("Looked up how to approach this kind of question", "guide",
                          "Checked the app's guide for the recommended analyses and pitfalls.",
                          None),

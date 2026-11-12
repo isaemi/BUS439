@@ -12,7 +12,7 @@ KNOWN_TOOLS = {"describe_data", "service_summary", "item_summary", "compare_grou
                "group_vs_everyone", "chr_summary", "chr_trend", "explain_difference",
                "survey_vs_visits", "wait_time_vs_rating", "equity_flags", "search_comments",
                "comment_overview", "run_sql", "what_changed", "care_journeys", "noshow_patterns",
-               "service_pathways", "insight_playbook", "priority_items"}
+               "service_pathways", "insight_playbook", "priority_items", "term_briefing"}
 
 
 def test_every_entry_is_complete_and_ids_are_unique():

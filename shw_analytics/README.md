@@ -14,6 +14,10 @@ Built by BUS 439 team BFPSST for SHW.
 
 | Need | What the tool does | Example |
 |---|---|---|
+| See what changed without asking | The **Briefing** tab runs a fixed set of tested analyses across services, checks the findings again together, and shows the few that hold up, plus what stayed the same and what could not be checked | Open the Briefing tab, or ask "What should we know this term?" |
+| Go one step further | Under each answer, up to two **related questions**: the next step on what was just found (test it, break it down, see who it affects, what happens next, what students say), and a tested finding from the briefing that has not come up yet | "Is the October rise in counselling from more students, or more visits each?" |
+| See it | Each analysis draws its own chart in the chat, titled with the finding; charts can be combined into a report | "make a report from graphics 1, 3 and 8" |
+| Find what matters most | Which survey questions are most closely linked to overall satisfaction, and score low | "What matters most to students in counselling?" |
 | Get a quick answer | Ask in plain English; the answer shows the numbers and how they were found | "Which service has the lowest % agree?" |
 | Dig into a finding | Ask follow-ups; the tool keeps the context and changes only what you change | "What about counselling?" → "And for international students?" → "Break that down by faculty" |
 | Check for inequities | An automatic scan compares every student group with everyone else and flags real gaps, instead of toggling demographic filters by hand | "Are there equity gaps in counselling?" |
@@ -38,8 +42,8 @@ Built by BUS 439 team BFPSST for SHW.
                                     ▼
              LTIC AI Gateway ──► Qwen (on-prem at UBC ARC)
                                     │
-                          Streamlit app: Ask · Dashboards ·
-                          Equity flags · Comments · Data quality
+                          Streamlit app: Briefing · Ask a question ·
+                          Dashboards · Comments
 ```
 
 Four principles shape the design:
@@ -103,11 +107,41 @@ cp ~/Downloads/<your export>.csv data/exports/
 python -m shw_analytics.ingest data/exports
 ```
 
+### Trying it with synthetic data
+
+No real exports are needed to try the app. These two scripts write a synthetic
+appointment export and a synthetic survey (with realistic comments and answer
+labels) into `data/`, with known patterns planted so the analyses have something
+true to find:
+
+```bash
+python scripts/make_synthetic_chr.py
+python scripts/make_synthetic_survey.py
+python -m shw_analytics.ingest data/exports
+streamlit run app.py
+```
+
+Optional, and uses the gateway (a few cents): sort comments into themes and make
+them searchable by meaning. Rebuilding the data clears these, so run them again
+after `ingest`:
+
+```bash
+python -m shw_analytics.comments --label
+python -m shw_analytics.comments --embed
+```
+
+Every answer from synthetic appointment data says so. `python -m shw_analytics.usage`
+shows how many gateway requests this computer has made and what they cost.
+
 Check that everything works (no model needed):
 
 ```bash
 python scripts/smoke_test.py data/exports/<your export>.csv
+for t in tests/test_*.py; do printf "%-30s" $t; python $t | tail -1; done
 ```
+
+On the synthetic survey, two smoke checks fail by design (they assume a survey
+with no differences between groups, and the synthetic one has gaps planted).
 
 In each new terminal, run `source .venv/bin/activate` first. Your prompt should
 start with `(.venv)`.
@@ -164,6 +198,25 @@ pipeline, not to judge answer quality.
 | `shw_analytics/comments.py` | Sentiment, themes, search and a check of comments against ratings | Makes open-text feedback usable at scale |
 | `shw_analytics/config.py` | Reads settings from `.env`; holds privacy and equity thresholds | Policy decisions (e.g. the minimum group size) live in one place |
 
+### Second-level analysis, briefing and charts
+
+| File | What it does | Why it matters |
+|---|---|---|
+| `shw_analytics/stats.py` | Shared statistics: re-sampling ranges with each student counted once, correction for running many tests, splitting a change into "who came" and "change within groups" | One tested implementation behind every finding |
+| `shw_analytics/insights.py` | `what_changed`: the same dates a year apart, with the change in students seen tested and each change split into its parts | Tells a real change from a shift in who came |
+| `shw_analytics/care_patterns.py` | What happens after a first visit, which appointments are missed more often, and movement between services | Continuity and no-show questions, answered with tests |
+| `shw_analytics/drivers.py` | Which survey questions are most closely linked to the overall rating and score low, kept only if stable | Where to look first in the survey |
+| `shw_analytics/briefing.py` | The term briefing: runs the analyses above across services, checks the findings again together, ranks them, and compares with the last briefing | Findings without anyone having to ask; no model involved |
+| `shw_analytics/followups.py` | The related questions under each answer, chosen by rules from what was found and what the conversation has already covered | Leads staff through the analysis an analyst would do |
+| `shw_analytics/playbook.yaml`, `playbook.py` | Common question types: which analyses fit, how to read them, what not to say | Editable guidance for the model, without code |
+| `shw_analytics/figures.py` | A chart for each analysis, shown in the chat and the briefing; builds the downloadable report | Charts state the finding and match the answer |
+| `shw_analytics/provenance.py` | Plain-language "How this answer was built" cards | Staff can check any answer |
+| `shw_analytics/plain.py` | Keeps p-values and similar jargon, and any "I re-checked" preamble, out of answers | Answers read the same way every time |
+| `shw_analytics/usage.py` | Logs each gateway request's tokens and cost (never content) to `data/usage_log.csv` | The team can see its share of the shared key |
+| `scripts/make_synthetic_survey.py` | A synthetic survey with planted patterns, realistic comments and answer labels | Try every feature before real data arrives |
+| `scripts/install_*.py` | One-time patches used during development; all are already applied on this branch | Nothing to run; kept for the record |
+| `tests/` | Twelve suites that plant a known effect and check it is found, and that noise is not | Run after any change |
+
 ### Dashboards
 
 | File | What it does | Why it matters |
@@ -176,8 +229,8 @@ pipeline, not to judge answer quality.
 
 | File | What it does | Why it matters |
 |---|---|---|
-| `app.py` | The Streamlit app: Ask, Dashboards, Equity flags, Comments, Data quality, plus data upload in the sidebar | Everything staff use, in one place |
-| `scripts/smoke_test.py` | 37 offline checks, from data loading to guardrails to dashboards | Confirms nothing broke after a change, without needing the model |
+| `app.py` | The Streamlit app: Briefing, Ask a question, Dashboards, Comments, plus data upload in the sidebar | Everything staff use, in one place |
+| `scripts/smoke_test.py` | Offline checks, from data loading to guardrails to dashboards | Confirms nothing broke after a change, without needing the model |
 | `docs/SCHEMA.md` | Tables, columns, keys and relationships, generated from the live database | A quick reference for anyone writing queries or extending the tool |
 | `scripts/make_synthetic_chr.py` | Builds a realistic fake CHR export with planted patterns (graduate students attend more sessions, autumn and March peaks, growth on last year) | Build and demo CHR features before real exports arrive |
 | `docs/chr_sample_export.csv` | The real CHR export layout with one scrubbed row | The parser is tested against the real format |
@@ -193,6 +246,9 @@ pipeline, not to judge answer quality.
 | `data/shw.duckdb` | The database the app reads, rebuilt from the exports |
 | `data/dashboards/` | Saved dashboard layouts |
 | `data/update.log` | History of scheduled updates |
+| `data/value_labels.yaml` | Answer labels written by the synthetic survey generator. Labels in `dictionary.yaml` take priority |
+| `data/briefings/` | One small file per briefing, so the next one can say what is new |
+| `data/usage_log.csv` | Gateway requests made from this computer: time, model, tokens, cost |
 
 ---
 
@@ -288,6 +344,11 @@ the previous one. The tool combines every file and counts each response once.
 | Appointments, visits per student, days in care, no-shows, trends | ✅ CHR export (synthetic until real exports arrive) |
 | Why groups differ in service use | ✅ CHR, broken into students, visits per student, days in care, services, no-shows |
 | Whether survey feedback reflects who visits | ✅ Survey + CHR, by faculty |
+| Whether a change since last year is real, and whether it comes from who came or from change within groups | ✅ CHR, same dates a year apart |
+| What happens after a first visit; which appointments are missed more often; movement between services | ✅ CHR, with each student counted once |
+| Which survey questions matter most to overall satisfaction | ✅ Survey, per service (needs about 50 respondents) |
+| A ranked summary of what changed and what is worth a look | ✅ Briefing tab, or "What should we know this term?" |
+| Whether two answers, or a group and an answer, are associated (chi-square) | ⚠️ Built, but on survey-sized data most 1 to 5 rating tables have cells under the privacy threshold, so the test usually cannot be released |
 | PHQ-9, medication, presenting concerns (CLICC), referrals | ❌ Not in the CHR export yet |
 | Demand vs clinician capacity, calls, students not offered appointments | ❌ Needs capacity and phone data |
 | Linking a survey response to a student's appointments | ❌ Not possible by design; only by shared groups (faculty, term) |
@@ -308,32 +369,39 @@ source is connected.
 | Minimum group size for equity tests | `.env`: `SHW_EQUITY_MIN` | 10 |
 | Which Qualtrics responses count | `.env`: `SHW_KEEP_CHANNELS` | `anonymous,test` (use `anonymous` for real data) |
 | Room for each model reply | `.env`: `SHW_MAX_TOKENS` | 4000 |
-| Colours and font | `shw_analytics/theme.py` | SHW mock-up palette |
+| Colours and font | `shw_analytics/theme.py` | UBC brand palette; Whitney where installed, otherwise Arial |
 | What each code means | `dictionary.yaml` | Items marked `CONFIRM` still need checking |
 
 ---
 
 ## Roadmap
 
-1. **Value labels**: one choice-text export from Qualtrics, then `labels.py`,
-   so answers use real group names.
-2. **More CHR fields**: ask Telus to add PHQ-9, priority appointment, presenting
-   concerns, international status and referral date, so "explain a difference"
-   can include severity and the gap between first contact and first appointment.
-3. **Investigation mode**: for "why" questions (e.g. "Why are counselling wait
-   times increasing?"), break the question into steps (trend, demand, capacity,
-   seasonality, groups), run each, and summarise which explanations the data
-   supports.
-4. **Hosting**: a UBC server for the app and the scheduled exports, with UBC
-   login.
-5. **SHW design rules** applied in `theme.py`.
+1. **Real answer labels**: the survey definition (`.qsf`) or one choice-text
+   export from Qualtrics, so real data shows group names. The synthetic survey
+   already has labels.
+2. **Survey changes handled safely**: move the remaining survey-specific codes
+   into `dictionary.yaml`, and report on each data load what changed in the
+   survey (new, removed or reworded questions, renumbered answers), so results
+   are never compared across a change in meaning.
+3. **No terminal for staff**: an admin page for loading data, sorting comments
+   into themes and rebuilding; comment themes kept across rebuilds.
+4. **Hosting**: a UBC server with UBC login, after SHW's privacy review.
+5. **Pilot evaluation**: record a change and its date, and compare before and
+   after against the same weeks last year and an unaffected group.
+6. **More CHR fields**: PHQ-9, priority appointment, presenting concerns,
+   international status, referral and booking dates.
 
 ---
 
 ## Known limitations
 
-- The current export is test data: ratings are random and comments are
-  placeholder text, so results only become meaningful with real responses.
+- Everything so far has run on synthetic data with planted patterns. That shows
+  the methods find what is there; it says nothing about real students.
+- The briefing tests each analysis on its own and then checks the findings that
+  passed again together. It is not a single correction across every test run.
+- Sorting comments into themes has to be redone after each data rebuild.
+- The chi-square association tests rarely return a result on survey-sized data
+  (see the table above).
 - Small-cell hiding doesn't prevent differencing (a total minus the visible
   groups). Fine for internal staff use; revisit before wider access.
 - The comment scrubber catches emails, phone numbers, student numbers and titled

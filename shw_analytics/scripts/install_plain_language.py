@@ -15,7 +15,10 @@ AGENT = Path("shw_analytics/agent.py")
 RULE = '''PLAIN_RULE = (
     "\\n\\nPlain numbers: staff are not statisticians. Never write p-values, q-values, 'CI' or "
     "'confidence interval'. Say whether a difference was tested and is real, or is within noise, "
-    "and give the range in words, e.g. '22.8% more students (range 8.6% to 38.8%)'. Write date "
+    "and give the range in words, e.g. '22.8% more students (range 8.6% to 38.8%)'. The same goes "
+    "for test statistics such as chi-square, degrees of freedom or Cramer's V: use them to decide "
+    "what to say, and leave the figures to the technical details under the answer. This rule takes "
+    "precedence over any tool, playbook or earlier rule that says to report them. Write date "
     "windows as '1 Sep to 31 Oct'.")
 
 

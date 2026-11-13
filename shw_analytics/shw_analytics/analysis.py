@@ -4,7 +4,7 @@ makes the equity flags defensible with small samples."""
 import duckdb
 import numpy as np
 import pandas as pd
-from scipy.stats import mannwhitneyu, spearmanr
+from scipy.stats import mannwhitneyu, spearmanr, chi2_contingency
 
 from . import config
 from .ingest import load_dictionary
@@ -521,3 +521,179 @@ def survey_vs_visits(con, dimension="faculty"):
     m = m.rename(columns={"grp": "faculty", "n_survey": "n_respondents", "n_visits": "n_students_seen"})
     m = m[(m["n_respondents"] >= config.MIN_CELL) | (m["n_students_seen"] >= config.MIN_CELL)]
     return m.sort_values("representation_ratio").reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Categorical association tests (shared by Qualtrics and uploaded CHR data).
+# Never return a contingency table or statistics when any observed cell is
+# smaller than MIN_CELL; this avoids exposing sensitive cross-tabulations.
+# ---------------------------------------------------------------------------
+
+def categorical_association(frame, predictor, outcome, source="uploaded data"):
+    """Chi-square independence test for two categorical columns of a DataFrame.
+
+    Both variables must be mutually exclusive categories per observation.
+    Rows with missing answers are removed. This function never exposes IDs.
+    """
+    if predictor == outcome:
+        raise ValueError("Choose two different categorical variables.")
+    if predictor not in frame.columns or outcome not in frame.columns:
+        raise ValueError("One or both selected variables are not present in the data.")
+    pair = frame[[predictor, outcome]].copy()
+    for col in (predictor, outcome):
+        pair[col] = pair[col].astype('string').str.strip()
+        pair[col] = pair[col].replace({'': pd.NA, 'nan': pd.NA, 'None': pd.NA,
+                                      'null': pd.NA, 'NA': pd.NA})
+    pair = pair.dropna()
+    if pair.empty:
+        return {'error': 'No paired, non-missing responses are available.'}
+    table = pd.crosstab(pair[predictor], pair[outcome])
+    if min(table.shape) < 2:
+        return {'error': 'Both variables must have at least two observed categories.'}
+    if table.size > 400:
+        return {'error': 'Too many categories for a meaningful cross-tabulation; choose categorical questions.'}
+    if (table.to_numpy() < config.MIN_CELL).any():
+        return {'error': 'Some cross-tabulation cells are below the privacy threshold; '
+                         'the table and test statistics cannot be released.',
+                'privacy_suppressed': True}
+    chi2, p_value, dof, expected = chi2_contingency(table.to_numpy(), correction=False)
+    n = int(table.to_numpy().sum())
+    v = float(np.sqrt(chi2 / (n * min(table.shape[0] - 1, table.shape[1] - 1))))
+    return {
+        'source': source, 'predictor': predictor, 'outcome': outcome,
+        'n': n, 'chi_square': round(float(chi2), 4), 'degrees_of_freedom': int(dof),
+        'p_value': float(p_value), 'cramers_v': round(v, 4),
+        'significant_at_0_05': bool(p_value < 0.05),
+        'assumptions': {
+            'min_expected_count': round(float(expected.min()), 2),
+            'expected_cells_below_5': int((expected < 5).sum()),
+            'expected_cells_below_1': int((expected < 1).sum()),
+            'chi_square_approximation_caution': bool((expected < 1).any() or
+                                                    (expected < 5).mean() > 0.2)
+        },
+        'contingency_table': [
+            {'predictor_category': str(idx), 'counts': {
+                str(col): int(table.loc[idx, col]) for col in table.columns},
+             'row_percentages': {str(col): round(100 * int(table.loc[idx, col]) /
+                                                 int(table.loc[idx].sum()), 1)
+                                 for col in table.columns}}
+            for idx in table.index],
+        'note': 'Association does not establish causation. Compare row percentages '
+                'to assess direction; chi-square alone does not establish direction.'
+    }
+
+
+def test_association(con, service, outcome_item, predictor_column=None,
+                     predictor_item=None, predictor_order=None, outcome_order=None):
+    """Pair Qualtrics answers by respondent within one service, then test."""
+    if bool(predictor_item) == bool(predictor_column):
+        raise ValueError('Provide exactly one of predictor_item or predictor_column.')
+    if predictor_order or outcome_order:
+        # The orders do not affect the chi-square statistic. No Spearman is
+        # reported until category order has been independently validated.
+        pass
+    outcome = con.execute("""SELECT response_id, CAST(score AS VARCHAR) AS outcome
+                             FROM ratings WHERE service = ? AND item_code = ?
+                             AND score IS NOT NULL""", [service, outcome_item]).df()
+    if outcome.empty:
+        raise ValueError('Outcome rating item not found for the selected service.')
+    if outcome['response_id'].duplicated().any():
+        raise ValueError('Outcome contains multiple ratings per respondent.')
+    if predictor_item:
+        predictor = con.execute("""SELECT response_id, CAST(score AS VARCHAR) AS predictor
+                                   FROM ratings WHERE service = ? AND item_code = ?
+                                   AND score IS NOT NULL""", [service, predictor_item]).df()
+        if predictor.empty:
+            raise ValueError('Predictor rating item not found for the selected service.')
+    else:
+        cols = set(con.execute('DESCRIBE responses').df()['column_name'])
+        if predictor_column not in cols or predictor_column in ('response_id', 'channel'):
+            raise ValueError('Predictor is not an allowed survey-answer column.')
+        predictor = con.execute(f'SELECT response_id, "{predictor_column}" AS predictor '
+                                'FROM responses').df()
+    if predictor['response_id'].duplicated().any():
+        raise ValueError('Predictor contains multiple records per respondent.')
+    paired = outcome.merge(predictor, on='response_id', how='inner')
+    return categorical_association(paired, 'predictor', 'outcome',
+                                   source=f'Qualtrics: {service}; {predictor_item or predictor_column} '
+                                          f'versus {outcome_item}')
+
+
+# Demographic-versus-rating association (respondent-level, privacy protected).
+def demographic_association(con, service, outcome_item, dimension, category=None):
+    """Single choice: omnibus chi-square. Multi-select: separate yes/no tests.
+
+    Each multi-select comparison contains each respondent exactly once, and
+    Benjamini-Hochberg correction controls false discovery across categories.
+    """
+    allowed = set(group_dimensions())
+    if dimension not in allowed:
+        raise ValueError("Unknown demographic dimension. Allowed: " + ", ".join(sorted(allowed)))
+    outcome = con.execute(
+        "SELECT response_id, CAST(score AS VARCHAR) AS outcome FROM ratings "
+        "WHERE service = ? AND item_code = ? AND score IS NOT NULL",
+        [service, outcome_item]).df()
+    if outcome.empty:
+        return {"error": "No outcome ratings found for that item and service."}
+    if outcome.response_id.duplicated().any():
+        return {"error": "Outcome has duplicate respondent records."}
+    if dimension not in MULTI_DIMENSIONS:
+        if category is not None:
+            return {"error": "category is only valid for multi-select demographic dimensions."}
+        demographic = con.execute(
+            f'SELECT response_id, "{dimension}" AS predictor FROM responses').df()
+        if demographic.response_id.duplicated().any():
+            return {"error": "Duplicate demographic records for respondents."}
+        pair = outcome.merge(demographic, on="response_id", how="inner")
+        result = categorical_association(pair, "predictor", "outcome",
+                                         source=f"Qualtrics: {service}; {dimension} versus {outcome_item}")
+        result["dimension"] = dimension
+        result["outcome_item"] = outcome_item
+        return result
+
+    selected = con.execute(MULTI_DIMENSIONS[dimension]).df().dropna(subset=["grp"])
+    selected["grp"] = selected["grp"].astype(str).str.strip()
+    selected = selected[selected["grp"] != ""].drop_duplicates(["response_id", "grp"])
+    # Only respondents who answered the multi-select question are included.
+    answered_ids = set(selected.response_id)
+    eligible = outcome[outcome.response_id.isin(answered_ids)].copy()
+    if eligible.empty:
+        return {"error": "No respondents answered both questions."}
+    categories = sorted(selected.grp.unique().tolist())
+    if category is not None:
+        if category not in categories:
+            return {"error": "Unknown category for this dimension."}
+        categories = [category]
+    total_categories_in_dataset = len(sorted(selected.grp.unique().tolist()))
+    results = []
+    for value in categories:
+        yes = set(selected.loc[selected.grp == value, "response_id"])
+        pair = eligible.copy()
+        pair["predictor"] = pair.response_id.isin(yes).map({True: "Selected", False: "Not selected"})
+        result = categorical_association(pair, "predictor", "outcome",
+                                         source=f"Qualtrics: {service}; {dimension}={value} versus {outcome_item}")
+        result["category"] = value
+        results.append(result)
+    valid = [r for r in results if "p_value" in r]
+    # Do not expose any test results if one category has privacy-suppressed cells:
+    # results for other categories could reveal the small cells by subtraction.
+    if any(r.get("privacy_suppressed") for r in results):
+        return {"error": "At least one demographic cross-tabulation has cells below the privacy "
+                         "threshold; no results are released for this request.",
+                "privacy_suppressed": True, "dimension": dimension}
+    if valid:
+        qvalues = _bh([r["p_value"] for r in valid])
+        for r, q in zip(valid, qvalues):
+            r["q_value"] = float(q)
+            r["significant_after_correction"] = bool(q < 0.05)
+    return {"dimension": dimension, "outcome_item": outcome_item, "service": service,
+            "total_categories_in_dataset": total_categories_in_dataset,
+            "categories_requested": len(categories),
+            "categories_tested": len(valid),
+            "categories_not_tested": [r["category"] for r in results if "p_value" not in r],
+            "analysis_type": "Separate selected-versus-not-selected comparisons per category",
+            "n_eligible": int(len(eligible)), "results": results,
+            "multiple_testing": "Benjamini-Hochberg correction across successful tests",
+            "note": "Multi-select categories overlap. Each test uses one row per respondent; "
+                    "do not treat faculty selections as mutually exclusive groups. "
+                    "Synthetic data are not actual UBC findings."}

@@ -433,3 +433,87 @@ use_cases:
     - Estimating staffing from appointment counts.
   say: '"We can count students seen; a caseload comparison needs weekly clinical hours."'
   data_gaps: [Weekly clinical hours by service, as used for the Clinical Load Index]
+
+- id: categorical_association
+  title: Are two categories or survey responses related?
+  status: ready
+  audience: service managers, survey analysts
+  questions:
+  - Are students who struggle to book counselling appointments less satisfied?
+  - Does faculty relate to counselling satisfaction?
+  - Are no-shows more common in some appointment types?
+  - Is satisfaction associated with ease of booking?
+  keywords:
+  - association
+  - associated
+  - related
+  - relationship
+  - linked
+  - connected
+  - booking satisfaction
+  - difficulty booking
+  - less satisfied
+  - more satisfied
+  - chi squared
+  - chi-square
+  - significant difference
+  - no-show rates by
+  - faculty satisfaction
+  why: For questions about relationships between categorical responses, descriptive percentages alone cannot establish
+    statistical evidence.
+  steps:
+  - tool: lookup_survey_items
+    purpose: REQUIRED first step for survey associations; retrieve current service item_code and item_text, and verify both requested concepts before analysis
+  - tool: test_association
+    purpose: Use two verified item_code strings from lookup_survey_items, never question wording or paraphrases
+  - tool: demographic_association
+    purpose: Use for a demographic category versus a verified survey rating; handle multi-select demographics as
+      separate selected-versus-not-selected tests with BH correction
+  - tool: chr_categorical_association
+    purpose: Use for two permitted CHR categorical attributes only when the student-level independence checks and
+      variables fit the question
+  read: Check variable definitions, service, respondent counts, privacy suppression, expected frequencies and independence.
+    Report group percentages, chi-square, df, p-value and Cramers V when provided. For multi-select comparisons
+    report total tested, excluded and BH-adjusted q-values. A p-value rounded to zero should be described as p <
+    0.001.
+  avoid:
+  - Do not use Chi-squared for a simple count or time trend.
+  - Do not infer the direction of a relationship from chi-square alone; inspect group proportions.
+  - Do not use an appointment-level Chi-squared test when patients have repeated appointments; use a valid student-level
+    analysis or state the limitation.
+  - Do not invent survey item codes, test statistics, or a causal conclusion.
+  say: Describe the observed group pattern and whether the statistical evidence supports an association, with sample
+    size and limitations; never claim causation.
+  variable_selection: >
+    Before selecting an association tool, translate each concept in the staff question
+    into a verified survey question's exact wording and service. Prefer the item whose
+    meaning directly matches the question, not a convenient related column. For
+    Counselling, "difficulty booking", "struggled to book", "ease of booking", and
+    "able to book" point to the question "I was able to book an appointment easily"
+    (historically CS1_1). "Overall satisfaction", "satisfied with the support", and
+    "happy with counselling support" point to "Overall, I am satisfied with the
+    support I received" (historically CS1_11). Always verify these codes against
+    the current item wording and service before analysis. cs_fell_short measures a
+    different concept (whether an experience fell short of expectations); it must
+    not stand in for ease or difficulty of booking. For Wellness Advising, phrases
+    such as "difficulty booking", "trouble scheduling", "hard to book", and
+    "problems making an appointment" refer to "I was able to book an appointment
+    easily" (historically WA1_1). Overall support satisfaction is asked twice
+    with identical wording (historically WA1_8 and WA1_10): verify both in the
+    current database and check usable paired responses and privacy restrictions
+    before selecting an item; disclose the chosen measure. Do not assume a
+    privacy-suppressed count means zero observations. For Medical or other services,
+    look up their own item wording rather than borrowing Counselling codes. If
+    the exact measure is unavailable, explain that; if two genuinely plausible
+    items remain, ask one concise clarification question before testing.
+  examples:
+    - question: Are students who struggle to book counselling appointments less satisfied?
+      resolve: Verify Counselling booking-ease item and overall-support satisfaction item; compare their paired responses. Do not use cs_fell_short.
+    - question: Do students whose counselling experience fell short report lower satisfaction?
+      resolve: This explicitly concerns falling short of expectations, not booking ease; verify the expectations measure and satisfaction measure.
+    - question: Are students who have difficulty booking Wellness Advising appointments less satisfied with support?
+      resolve: Verify Wellness Advising booking ease and both identically worded overall satisfaction items. Use a satisfaction item with valid paired responses and disclose which was tested. Do not substitute wait time or centre access.
+    - question: Do students who struggle to schedule Wellness appointments report lower satisfaction?
+      resolve: Treat Wellness as Wellness Advising only when the intended service is clear; verify the booking-ease and overall-support satisfaction questions and test paired responses if available.
+    - question: Does difficulty booking affect satisfaction in Medical?
+      resolve: Search Medical item wording for booking ease and satisfaction; do not reuse Counselling item codes or infer causation.

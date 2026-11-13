@@ -6,13 +6,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from shw_analytics import playbook  # noqa: E402
+from shw_analytics import tools, playbook  # noqa: E402
 
-KNOWN_TOOLS = {"describe_data", "service_summary", "item_summary", "compare_groups",
-               "group_vs_everyone", "chr_summary", "chr_trend", "explain_difference",
-               "survey_vs_visits", "wait_time_vs_rating", "equity_flags", "search_comments",
-               "comment_overview", "run_sql", "what_changed", "care_journeys", "noshow_patterns",
-               "service_pathways", "insight_playbook", "priority_items", "term_briefing"}
+KNOWN_TOOLS = {s["function"]["name"] for s in tools.TOOL_SPECS}  # whatever the assistant can actually call
 
 
 def test_every_entry_is_complete_and_ids_are_unique():

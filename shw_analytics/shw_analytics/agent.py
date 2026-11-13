@@ -7,6 +7,7 @@ Works in two modes (config.TOOL_MODE):
 """
 import json
 import re
+import math
 
 from openai import BadRequestError
 
@@ -63,6 +64,81 @@ Rules:
   sentence. Never present results for everyone as if they were for a subgroup.
 - For questions about differences between groups (equity), call equity_flags. A gap is
   only "significant" if it appears in flags. compare_groups is descriptive only.
+- For Chi-squared association between a demographic (faculty, disability, academic level,
+  etc.) and a survey rating, call demographic_association with the verified service,
+  outcome item code and demographic dimension. Faculty and other multi-select
+  categories require separate selected-versus-not-selected tests; never treat
+  overlapping categories as mutually exclusive. Report BH-adjusted q-values for
+  multiple comparisons. Do not claim the analysis is unsupported without calling
+  the dedicated demographic test. Respect privacy suppression errors.
+  For multi-select demographics, use categories_requested and categories_tested
+  to state exactly how many categories were evaluated; never infer the number
+  from how many rows you choose to discuss. If summarizing only a subset,
+  explicitly say it is a subset and report the overall counts and exclusions.
+  Never switch services when referring to earlier analyses.
+- When staff ask whether two categories are related, linked, or differ in likelihood,
+  consult the categorical_association playbook even if they do not name Chi-squared.
+  First map each everyday-language concept to the matching survey question wording;
+  do not treat "fell short of expectations" as a synonym for "difficulty booking".
+  Use a statistical test only when the variables and independence assumptions fit;
+  otherwise explain the limitation and provide descriptive results.
+- Before ANY survey association test, CALL lookup_survey_items for the requested service
+  (omit query to inspect the full list when matching is uncertain). Read its item_code
+  and item_text. Pass verified item_code strings, NEVER paraphrases or question wording,
+  as outcome_item and predictor_item to test_association or demographic_association.
+  If a tool reports an unverified item, use lookup_survey_items and retry with codes.
+  Never claim an item is absent merely because a description failed as an argument.
+- Before ANY survey association test, resolve the user's concepts to the exact survey
+  item wording in the available data. A vague phrase is not permission to substitute a
+  nearby but different variable. In Counselling, "difficulty booking", "booking ease",
+  or "struggle to book" refers to the booking-ease item (previously CS1_1), NOT
+  cs_fell_short (whether an experience fell short of expectations). "Overall
+  satisfaction with support" refers to the overall-support satisfaction item
+  (previously CS1_11), NOT a general expectations item. Verify the current item_text
+  and service in the data before using these codes; do not assume codes remain stable.
+  The lookup tool may return verified_semantic_alias matches for common phrasing
+  such as "difficulty booking", "problems booking", "trouble booking",
+  "issues scheduling", and "hard to book". Prefer a verified semantic match
+  when it directly expresses the requested concept; do not treat a mere
+  text_overlap match as definitive if its wording describes a different concept.
+  For positively worded booking ease, disagreement (scores 1-2) represents
+  reported difficulty, but keep the original 1-5 ratings for standard Chi-square
+  tests. Do not interpret "difficulty" as a new binary variable unless requested.
+  When multiple plausible items genuinely fit, ask one brief clarifying question
+  rather than silently choosing a proxy. If the exact requested measure is absent,
+  state that clearly and do not replace it with a different measure.
+- For Wellness Advising booking difficulty, trouble scheduling, hard to book,
+  problems making appointments, or ease of booking, look up the service's
+  "I was able to book an appointment easily" item (historically WA1_1).
+  Overall support satisfaction refers to "Overall, I am satisfied with the
+  support I received" (historically WA1_8 and WA1_10). These two satisfaction
+  items have identical wording: check usable paired responses and privacy
+  restrictions before selecting one. Prefer the item with valid paired data,
+  explain which item was used, and never claim the other has zero responses
+  merely because its result is privacy-suppressed. Verify all codes against
+  live items, preserve the five Likert levels, and never treat wait time or
+  access to the centre as equivalent to booking ease.
+- For association between two categorical Qualtrics questions, use test_association with
+  verified question item codes and the correct service; never substitute related items.
+  For CHR categorical association, use chr_categorical_association. Do not use
+  survey item codes for CHR. State which question wording/variables were used.
+  Chi-square expected-count assumptions and observed-cell privacy suppression are
+  different checks. If a result is suppressed, do not invent its statistics.
+  The synthetic dataset is test data, not findings about actual UBC students.
+- For a Chi-square association between two ordered survey ratings, statistical
+  significance and Cramer's V establish association, NOT its direction or a
+  monotonic trend. Do not claim "easier booking means higher satisfaction",
+  "harder booking means lower satisfaction", or a "gradient" solely from
+  Chi-square, Cramer's V, or a comparison of two selected cells.
+  To describe direction, first inspect the COMPLETE, correctly labelled
+  cross-tabulation: compare satisfaction 4-or-5 percentages WITHIN each of
+  the five booking-ease rows, in rating order 1, 2, 3, 4, 5. Do not confuse
+  booking scores 4 and 5, or transfer percentages from one row to another.
+  If row totals or complete unsuppressed rows are unavailable, state that
+  direction cannot be reliably determined from the reported statistics.
+  If percentages rise and fall across booking levels, describe a mixed or
+  non-monotonic pattern, not a consistent trend. Never imply causation.
+  Never call the association "strong" solely because the p-value is tiny.
 - Report n with every figure. If groups were suppressed (n < {min_cell}), say so plainly.
 - Survey scale: 1-5, "% agree" = share answering 4 or 5.
 - Comments: summarise themes; quote at most short phrases; never guess who wrote them.
@@ -154,7 +230,10 @@ AGREE_RULE = (
 PLAIN_RULE = (
     "\n\nPlain numbers: staff are not statisticians. Never write p-values, q-values, 'CI' or "
     "'confidence interval'. Say whether a difference was tested and is real, or is within noise, "
-    "and give the range in words, e.g. '22.8% more students (range 8.6% to 38.8%)'. Write date "
+    "and give the range in words, e.g. '22.8% more students (range 8.6% to 38.8%)'. The same goes "
+    "for test statistics such as chi-square, degrees of freedom or Cramer's V: use them to decide "
+    "what to say, and leave the figures to the technical details under the answer. This rule takes "
+    "precedence over any tool, playbook or earlier rule that says to report them. Write date "
     "windows as '1 Sep to 31 Oct'.")
 
 
@@ -168,7 +247,7 @@ def _system(json_mode):
 
 
 _CODE = re.compile(r"\b[A-Z]+\d*_\d+\b")          # item codes like WA1_10
-_NUM = re.compile(r"(?<![\w.])\d+(?:\.\d+)?")
+_NUM = re.compile(r"(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![\w.])\d+(?:\.\d+)?")
 _FREE = {str(i) for i in range(0, 11)} | {"100"}     # scale points, counts like "3 points"
 
 _INTERNAL = re.compile(r"\b(" + "|".join(
@@ -211,9 +290,11 @@ def _result_numbers(trace):
     field name so gaps can be checked within a field."""
     found, by_key = set(), {}
     def add(x, key):
-        for d in (0, 1, 2, 3):
+        for d in (0, 1, 2, 3, 4):
             v = round(float(x), d)
             found.add(f"{v:.{d}f}")
+            if d == 0:
+                found.add(f"{int(v):,}")
             found.add(f"{100 * v:.{max(d - 2, 0)}f}")  # 0.413 -> 41.3 style
         found.add(str(x))
         by_key.setdefault(key, set()).add(float(x))
@@ -249,24 +330,142 @@ def _differences(by_key):
     return extra
 
 
-def ungrounded_numbers(answer, trace):
-    """Numbers in the answer that appear in no tool result (or as a gap between two
-    result figures). Catches invented figures."""
+def _p_values(trace):
+    """Read actual numeric test p-values; don't infer them from prose."""
+    values = []
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if k in ("p", "p_value") and isinstance(v, (float, int)) and not isinstance(v, bool):
+                    if 0 <= v <= 1:
+                        values.append(float(v))
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    for name, _, result in trace:
+        if name not in ("question", "suggested", "fallback"):
+            walk(result)
+    return values
+
+
+def _numeric_tokens(answer):
+    """Keep scientific notation intact, unlike the original decimal-only regex."""
     text = _CODE.sub("", answer or "")
+    return re.findall(r"(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?", text)
+
+
+def ungrounded_numbers(answer, trace):
+    """Conservatively flag unsupported numbers, with verified p-value thresholds.
+
+    An inequality such as p < 0.0001 is a valid rounded claim when an actual
+    numeric p-value in the result is below that threshold. It is NOT evidence
+    for an arbitrary count or percentage.
+    """
     found, by_key = _result_numbers(trace)
-    known = found | _differences(by_key)
+    is_association = any(name == "test_association" for name, _, _ in trace)
+    known = found if is_association else found | _differences(by_key)
+    p_values = _p_values(trace)
     bad = []
-    for n in _NUM.findall(text):
-        norm = n.rstrip("0").rstrip(".") if "." in n else n
+    text = _CODE.sub("", answer or "")
+    for match in re.finditer(r"(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?", text):
+        n = match.group()
+        norm = n.replace(",", "")
+        try:
+            value = float(norm)
+        except ValueError:
+            bad.append(n)
+            continue
         if n in _FREE or n in known or norm in known:
+            continue
+        # Treat p-value bounds as derived from the actual test, not as invented
+        # data. Check the operator and numeric result before allowing them.
+        prefix = text[max(0, match.start()-14):match.start()]
+        p_match = re.search(r"(?:\bp(?:-value| value)?\s*)(<=|>=|<|>|=)\s*$", prefix, re.I)
+        if p_match and p_values:
+            op = p_match.group(1)
+            if ((op == "<" and any(p < value for p in p_values)) or
+                (op == "<=" and any(p <= value for p in p_values)) or
+                (op == ">" and any(p > value for p in p_values)) or
+                (op == ">=" and any(p >= value for p in p_values)) or
+                (op == "=" and any(math.isclose(p, value, rel_tol=1e-4, abs_tol=1e-300) for p in p_values))):
+                continue
+        # A reported scientific p-value may be rounded relative to the tool.
+        if re.search(r"[eE][+-]?\d+", norm) and p_match and p_values:
+            if any(math.isclose(p, value, rel_tol=0.02, abs_tol=1e-300) for p in p_values):
+                continue
+        if "." in norm and "e" not in norm.lower():
+            norm = norm.rstrip("0").rstrip(".")
+        if norm in known:
             continue
         bad.append(n)
     return sorted(set(bad))
 
 
+def _remove_unsupported_breakdown(answer, trace):
+    """Fail closed on unsupported association breakdowns rather than printing them.
+
+    Do not silently alter the reported test itself; leave its statistics in place
+    for the normal grounding warning if those are unverified.
+    """
+    if not any(name == "test_association" and isinstance(res, dict) and "error" not in res
+               for name, _, res in trace):
+        return answer
+    kept = []
+    removed = False
+    for line in (answer or "").splitlines():
+        bad = ungrounded_numbers(line, trace)
+        breakdown = bool(re.search(r"\b(booking (?:ease )?(?:score|rating)|among (?:students|those)|"
+                                   r"strongly (?:agreed|disagreed)|satisfaction (?:score|rating))\b", line, re.I))
+        if bad and breakdown:
+            removed = True
+            continue
+        kept.append(line)
+    result = "\n".join(kept).strip()
+    if removed:
+        result += ("\n\nDetailed subgroup figures were omitted because they could not "
+                   "be verified against the current statistical results.")
+    return result
+
+
+DIRECTION_CHECK_NUDGE = (
+    "Before finalizing this survey association answer, verify any directional "
+    "claim against the FULL contingency table, with booking scores 1 through 5 "
+    "correctly matched to their own satisfaction counts. Chi-square significance "
+    "and Cramer's V alone do NOT show which direction the association runs. "
+    "Calculate or quote satisfaction 4-or-5 percentages for EACH booking row "
+    "only when row totals and unsuppressed counts support them. If the pattern "
+    "is mixed, explicitly say it is non-monotonic. If the full table is missing, "
+    "do not claim a directional trend. Do not swap scores 4 and 5. "
+    "Use only subgroup counts and percentages explicitly returned for the SAME "
+    "booking row in the current result; omit any unverified breakdown. "
+    "Now provide a carefully verified answer."
+)
+
+
+def _needs_direction_review(answer, trace):
+    """Review direction claims only for actual survey item association tests."""
+    has_survey_test = any(
+        name == "test_association" and isinstance(result, dict) and "error" not in result
+        for name, _, result in trace
+    )
+    if not has_survey_test:
+        return False
+    direction = re.search(
+        r"\b(tend(?:s)? to|generally|consistently|gradient|higher satisfaction|"
+        r"lower satisfaction|more satisfied|less satisfied|positively associated|"
+        r"negatively associated|easier booking|harder booking)\b",
+        answer or "", re.I,
+    )
+    return bool(direction)
+
+
 def _grounding_retry_msg(bad):
-    return (f"These numbers are not in any tool result: {', '.join(bad)}. Rewrite the answer "
-            "using only figures that appear in the tool results, or call a tool to get them.")
+    return (f"These numbers are not verified by the current tool results: {', '.join(bad)}. "
+            "Remove unsupported subgroup details rather than guessing replacement counts. "
+            "Use only current, correctly labelled results; if needed give the overall "
+            "association without a numerical subgroup breakdown.")
 
 
 _SIG = re.compile(r"statistically|significan", re.IGNORECASE)
@@ -313,8 +512,9 @@ def _has_test(trace):
 
 
 def _finalise(answer, trace, mode, ctx=()):
+    answer = _remove_unsupported_breakdown(answer, trace)   # Jonathan: drop unverifiable subgroup lines first
     from .plain import plain_stats
-    answer = plain_stats(answer)
+    answer = plain_stats(answer)                            # then keep statistics jargon out of the staff answer
     bad = ungrounded_numbers(answer, list(ctx) + trace)
     if bad:
         answer += (f"\n\n⚠️ Check before using: these figures could not be traced to the data: "
@@ -387,6 +587,7 @@ _EVERYONE = re.compile(r"\b(everyone|overall|all (other )?(students|respondents)
 _WAIT = re.compile(r"\bwait\w*\b", re.I)
 _REPRESENT = re.compile(r"\b(represent\w*|reflect\w*|who (actually )?visits)\b", re.I)
 _SURVEY = re.compile(r"\b(experienc\w*|rate|rates|rating\w*|satisf\w*|agree\w*|feedback|survey|feel)\b", re.I)
+_ASSOCIATION = re.compile(r"\b(associat\w*|relat\w*|link\w*|connect\w*|correlat\w*|chi[- ]?squared|significan\w*|more likely|less likely|more common|less common|less satisfied|more satisfied)\b", re.I)
 
 
 def _find_values(question, values):
@@ -410,6 +611,9 @@ def route(question):
     hints, terms = [], []
     if svc_survey:
         terms.append(svc_survey.replace("_", " ").split()[0][:7])
+    # Relationship questions should consult the playbook before choosing a descriptive tool.
+    if _ASSOCIATION.search(q):
+        hints.append(("insight_playbook", {"topic_id": "categorical_association"}))
     has_chr = analysis.has_chr(con)
     survey_question = bool(_SURVEY.search(q)) and not _USAGE.search(q.replace("services", ""))
     if _REPRESENT.search(q):
@@ -534,7 +738,7 @@ def _ask_native(question, history, max_steps, chat_fn, trace, ctx):
     if hints:
         messages.append({"role": "system", "content": _hint_message(hints)})
         trace.append(("suggested", {"calls": [n for n, _ in hints]}, {"hints": [{"tool": n, "args": a} for n, a in hints]}))
-    nudged = retried = handed_off = coded = drifted = False
+    nudged = retried = handed_off = coded = drifted = direction_checked = False
     empties = 0
     seen = {}
     asked = set()
@@ -568,6 +772,11 @@ def _ask_native(question, history, max_steps, chat_fn, trace, ctx):
                 coded = True
                 messages += [{"role": "assistant", "content": msg.content or ""},
                              {"role": "user", "content": ITEM_CODE_NUDGE}]
+                continue
+            if not direction_checked and _needs_direction_review(msg.content, trace):
+                direction_checked = True
+                messages += [{"role": "assistant", "content": msg.content or ""},
+                             {"role": "user", "content": DIRECTION_CHECK_NUDGE}]
                 continue
             bad = ungrounded_numbers(msg.content, ctx + trace)
             if bad and not retried:
@@ -609,7 +818,7 @@ def _ask_json(question, history, max_steps, chat_fn, trace, ctx):
                 {"role": "user", "content": question}]
     if hints:
         messages.append({"role": "system", "content": _hint_message(hints)})
-    nudged = retried = handed_off = coded = False
+    nudged = retried = handed_off = coded = direction_checked = False
     seen = {}
     for _ in range(max_steps):
         reply = chat_fn(messages).content
@@ -635,6 +844,11 @@ def _ask_json(question, history, max_steps, chat_fn, trace, ctx):
                 coded = True
                 messages += [{"role": "assistant", "content": reply},
                              {"role": "user", "content": ITEM_CODE_NUDGE}]
+                continue
+            if not direction_checked and _needs_direction_review(obj["answer"], trace):
+                direction_checked = True
+                messages += [{"role": "assistant", "content": reply},
+                             {"role": "user", "content": DIRECTION_CHECK_NUDGE}]
                 continue
             bad = ungrounded_numbers(obj["answer"], ctx + trace)
             if bad and not retried:
@@ -665,24 +879,14 @@ if __name__ == "__main__":
 #    they are checked against the tool results, so correct figures are not flagged.
 # 2) When the model is asked to rewrite an answer, it must return the answer only. Staff never see
 #    the request, so "good catch, I re-checked..." makes no sense to them.
-_THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
-_SCI = re.compile(r"(?<![\w.])\d+(?:\.\d+)?[eE][-+]?\d+")
-_check_numbers = ungrounded_numbers
-
-
-def ungrounded_numbers(answer, trace):
-    text = _THOUSANDS.sub("", answer or "")
-    sci = _SCI.findall(text)
-    bad = list(_check_numbers(_SCI.sub(" ", text), trace))
-    if sci:
-        blob = json.dumps([s[2] for s in trace if isinstance(s, (tuple, list)) and len(s) == 3], default=str)
-        bad += [x for x in sci if x not in blob]
-    return sorted(set(bad))
+# Number check: agent.ungrounded_numbers (Jonathan's version) already reads "1,717" and
+# scientific notation, so it is not wrapped here.
 
 
 _ANSWER_ONLY = (" Reply with the complete answer for the staff member and nothing else: do not mention this "
                 "note, and do not say that anything was checked again, corrected or removed.")
-for _name in ("NO_TOOL_NUDGE", "OFF_TOPIC_NUDGE", "HANDOFF_NUDGE", "ITEM_CODE_NUDGE", "FINAL_NUDGE"):
+for _name in ("NO_TOOL_NUDGE", "OFF_TOPIC_NUDGE", "HANDOFF_NUDGE", "ITEM_CODE_NUDGE", "FINAL_NUDGE",
+              "DIRECTION_CHECK_NUDGE"):
     if _name in globals():
         globals()[_name] = globals()[_name] + _ANSWER_ONLY
 _retry_msg = _grounding_retry_msg

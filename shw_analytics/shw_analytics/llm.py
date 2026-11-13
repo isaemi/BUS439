@@ -22,6 +22,8 @@ def client():
         if not config.API_KEY:
             raise RuntimeError("Set LTIC_API_KEY in your environment (never commit it).")
         _client = OpenAI(base_url=config.GATEWAY_URL, api_key=config.API_KEY)
+        from . import usage
+        usage.attach(_client)     # logs tokens and cost per request (never content); see usage.py
     return _client
 
 

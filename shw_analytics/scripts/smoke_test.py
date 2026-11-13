@@ -173,12 +173,12 @@ results.append(ok(out["mode"] == "json" and out["answer"].startswith("Weakest"),
 
 # Invented numbers are caught: the model answers without tools, then with made-up figures.
 config.TOOL_MODE = "native"
-script = iter([NS(content="Medical is 3.8 (62% agree).", tool_calls=None),
+script = iter([NS(content="Medical is 9.7 (987% agree).", tool_calls=None),
                NS(content="", tool_calls=[NS(id="w", function=NS(name="service_summary", arguments="{}"))]),
-               NS(content="Medical is 3.8 (62% agree).", tool_calls=None),
-               NS(content="Medical is 3.8 (62% agree).", tool_calls=None)])
+               NS(content="Medical is 9.7 (987% agree).", tool_calls=None),
+               NS(content="Medical is 9.7 (987% agree).", tool_calls=None)])
 out = agent.ask("medical?", chat_fn=lambda m, tools=None: next(script))
-results.append(ok(len(out["trace"]) == 1 and out["ungrounded"] == ["3.8", "62"],
+results.append(ok(len(out["trace"]) == 1 and out["ungrounded"] == ["9.7", "987"],
                   f"no-tool nudge + invented numbers flagged: {out['ungrounded']}"))
 
 # Empty replies (out of tokens while thinking) are retried, then explained.

@@ -328,7 +328,7 @@ def page_meta(spec):
     ids = analysis.focus_ids(con, focus)
     total = con.execute("SELECT COUNT(*) FROM responses").fetchone()[0]
     n = len(ids) if ids is not None else total
-    fmt = lambda d: d.strftime("%b %-d, %Y") if d else "?"
+    fmt = lambda d: f"{d:%b} {d.day}, {d:%Y}" if d else "?"
     return {"title": "Student Health & Wellbeing",
             "subtitle": spec.get("title") or focus_label(focus) or "All services",
             "period": f"{fmt(lo)} – {fmt(hi)}",

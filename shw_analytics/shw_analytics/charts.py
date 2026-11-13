@@ -267,7 +267,7 @@ def render_page(spec, panels, meta):
     t = theme
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{_esc(meta['subtitle'])} – SHW</title>
-<link href="{t.FONT_URL}" rel="stylesheet">
+{t.font_link()}
 <script src="https://cdn.jsdelivr.net/npm/vega@{alt.VEGA_VERSION}"></script>
 <script src="https://cdn.jsdelivr.net/npm/vega-lite@{alt.VEGALITE_VERSION}"></script>
 <script src="https://cdn.jsdelivr.net/npm/vega-embed@{alt.VEGAEMBED_VERSION}"></script>
@@ -277,14 +277,14 @@ def render_page(spec, panels, meta):
 .header{{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:18px}}
 .h1{{font-size:30px;font-weight:700;color:{t.NAVY};line-height:1.15}}
 .h2{{font-size:22px;color:{t.NAVY};margin-top:2px}} .hmeta{{color:{t.MUTED};margin-top:10px;font-size:15px}}
-.hbox{{display:flex;background:#E9EEF6;border-radius:10px;padding:14px 18px;gap:18px;font-size:13px;color:{t.TEXT}}}
-.hlabel{{font-weight:700;margin-bottom:6px}} .hsep{{border-left:1px solid #CBD5E3;padding-left:18px}}
+.hbox{{display:flex;background:{t.ALERT_BG['info']};border-radius:10px;padding:14px 18px;gap:18px;font-size:13px;color:{t.TEXT}}}
+.hlabel{{font-weight:700;margin-bottom:6px}} .hsep{{border-left:1px solid {t.OVERALL};padding-left:18px}}
 .hbig{{font-size:30px;font-weight:700;color:{t.NAVY}}}
 .card{{background:{t.CARD};border:1px solid {t.BORDER};border-radius:12px;padding:18px 20px;
       box-shadow:0 1px 2px rgba(16,35,80,.04)}}
 .kpis{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}}
 .kpi{{display:flex;gap:14px;align-items:flex-start}}
-.icon{{width:44px;height:44px;border-radius:50%;background:#E8EFFA;display:flex;align-items:center;
+.icon{{width:44px;height:44px;border-radius:50%;background:{t.ALERT_BG['info']};display:flex;align-items:center;
       justify-content:center;flex:none}} .icon svg{{width:22px;height:22px}}
 .klabel{{font-weight:600;font-size:16px;color:{t.NAVY}}}
 .krow{{display:flex;align-items:center;gap:12px;margin:6px 0 4px}}

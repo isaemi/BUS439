@@ -1,18 +1,23 @@
 """Streamlit front end.  Run:  streamlit run app.py"""
 import streamlit as st
+import streamlit.components.v1 as components
 
-from shw_analytics import agent, analysis, charts, config, dashboard, tools
+from shw_analytics import (agent, analysis, briefing, charts, config, dashboard, figures, followups,
+                           provenance, theme, tools)
 
-st.set_page_config(page_title="SHW Feedback Assistant", layout="wide")
-st.title("SHW Student Feedback Assistant")
-st.caption("Answers come from de-identified survey data. Model: on-prem Qwen via the LTIC AI Gateway. "
-           "Groups with fewer than the minimum number of respondents are hidden.")
+st.set_page_config(page_title="Student Feedback Assistant | UBC Student Health and Wellbeing", layout="wide")
+st.markdown(theme.app_css(), unsafe_allow_html=True)
+st.markdown(theme.header_html(
+    "Ask about students' experience of our services. Answers come from de-identified survey and "
+    "appointment data, analysed on UBC infrastructure. Small groups are hidden to protect privacy."),
+    unsafe_allow_html=True)
 
 import datetime as _dt
 import gc
 import os
 import subprocess
 import sys
+import re
 
 EXPORTS = config.DB_PATH.parent / "exports"
 
@@ -30,7 +35,7 @@ with st.sidebar:
     st.subheader("Survey data")
     if config.DB_PATH.exists():
         built = _dt.datetime.fromtimestamp(config.DB_PATH.stat().st_mtime)
-        st.caption(f"Last updated {built:%b %-d, %Y %H:%M}")
+        st.caption(f"Last updated {built.strftime('%b')} {built.day}, {built:%Y %H:%M}")
     files = sorted(EXPORTS.glob("*.csv")) if EXPORTS.exists() else []
     st.caption(f"{len(files)} export file(s) in data/exports")
     uploads = st.file_uploader("Add Qualtrics exports (CSV, numeric values)", type="csv",
@@ -80,15 +85,74 @@ if not config.DB_PATH.exists():
                "`python -m shw_analytics.ingest data/exports`.")
     st.stop()
 
-ask_tab, dash_tab, equity_tab, comments_tab, quality_tab = st.tabs(
-    ["Ask a question", "Dashboards", "Equity flags", "Comments", "Data quality"])
+brief_tab, ask_tab, dash_tab, comments_tab = st.tabs(["Briefing", "Ask a question", "Dashboards", "Comments"])
+
+
+with brief_tab:
+    # What changed and what is worth a look, without anyone having to ask. Built from tested
+    # analyses only, with no model involved, so the same data always gives the same briefing.
+    b = briefing.cached()
+    if b is None:
+        st.markdown("#### This term at a glance")
+        st.write("The briefing runs a fixed set of tested analyses across services, checks the findings again "
+                 "together, and shows the few that hold up, along with what stayed the same and what could "
+                 "not be checked.")
+        if st.button("Build this term's briefing", type="primary"):
+            with st.spinner("Running the analyses and checking them together (about half a minute)..."):
+                b = briefing.build()
+    if b:
+        changes = briefing.compare(b, briefing.previous(b))
+        briefing.save(b)
+        st.markdown("#### This term at a glance")
+        st.caption(
+            f"Appointment records to {b.get('data_through', 'n/a')}"
+            + (f", comparing {b['compared']}" if b.get("compared") else "")
+            + (f". Survey responses from {b['survey_period']}" if b.get("survey_period") else "")
+            + f". {b['tests_run']} checks were run. Each analysis was tested on its own, and the findings that "
+              "passed were checked again together; only those that held up are shown."
+            + (f" Compared with the briefing from {changes['since']}." if changes.get("since") else "")
+            + (" **The appointment records are synthetic test data, not real.**" if b.get("synthetic") else ""))
+        if not b["findings"]:
+            st.info("Nothing stood out after checking everything together. See what stayed the same below.")
+        for n, f in enumerate(b["findings"], 1):
+            tag = changes["status"].get(f["id"])
+            tag_html = f'<span class="shw-tag{" new" if tag == "new" else ""}">{tag.capitalize()}</span>' if tag else ""
+            with st.container(border=True):
+                st.markdown(f'<div class="shw-num">FINDING {n}{tag_html}</div>'
+                            f'<div class="shw-gtitle">{f["headline"]}</div>'
+                            f'<div class="shw-detail">{f["detail"]}</div>', unsafe_allow_html=True)
+                spec = briefing.graphic(f)
+                if spec:
+                    st.plotly_chart(spec.fig, key=f"brief_{n}", width="stretch", theme=None,
+                                    config={"displayModeBar": False})
+                st.markdown(f'<div class="shw-small">{f["tested"]}</div>'
+                            f'<div class="shw-small"><b>Related question:</b> {f["next"]}</div>',
+                            unsafe_allow_html=True)
+        for title, items in (("Also noted", [f["headline"] for f in b["also"]]),
+                             ("No longer showing since last time", changes.get("gone", [])),
+                             ("What stayed the same", b["unchanged"]),
+                             ("What could not be checked", b["not_checked"])):
+            if items:
+                with st.expander(f"{title} ({len(items)})", expanded=title == "What stayed the same"):
+                    st.markdown("\n".join(f"- {i}" for i in items))
+        if st.session_state.get("brief_html_key") != b["data_key"]:
+            st.session_state.brief_html = briefing.to_html(b, changes)
+            st.session_state.brief_html_key = b["data_key"]
+        st.download_button("Download the briefing (HTML)", st.session_state.brief_html,
+                           file_name=f"shw_briefing_{b.get('data_through', 'latest')}.html", mime="text/html")
+
 
 with ask_tab:
     if "turns" not in st.session_state:
         st.session_state.turns = []
+    if "figures" not in st.session_state:
+        st.session_state.figures = {}
+    store = st.session_state.figures
+
     c1, c2 = st.columns([1, 2])
-    if c1.button("New conversation", help="Clear earlier questions so they don't affect the next answer"):
+    if c1.button("New conversation", help="Clear earlier questions and graphics so they don't affect the next answer"):
         st.session_state.turns = []
+        st.session_state.figures = {}
         st.rerun()
     if st.session_state.turns and c2.button("Make a dashboard from this conversation"):
         request = "A dashboard covering these questions:\n" + "\n".join(
@@ -101,35 +165,93 @@ with ask_tab:
             st.session_state.dash_spec = planned
             st.success("Done. Open the Dashboards tab and choose \"Describe it\" to see it.")
 
-    def show_trace(trace):
+    def show_trace(trace, key):
+        """Where the answer came from, in plain words. The raw steps stay available for
+        the team behind a switch, but staff never have to read code or JSON."""
         with st.expander("How this answer was built"):
-            if not trace:
-                st.write("No tools were called.")
-            for name, args, res in trace:
-                st.markdown(f"**{name}** `{args}`")
-                st.json(res, expanded=False)
+            cards = provenance.evidence_cards(trace)
+            st.markdown(provenance.render_markdown(cards))
+            steps = [s for s in trace if isinstance(s, (list, tuple)) and len(s) == 3]
+            if steps and st.toggle("Show technical details", key=f"tech_{key}"):
+                for name, args, res in steps:
+                    st.markdown(f"**{name}** `{args}`")
+                    st.json(res, expanded=False)
 
-    for t in st.session_state.turns:
+    def show_graphic(gid, key_prefix):
+        g = store[gid]
+        if g.kind == "chart":
+            with st.container(border=True):
+                st.markdown(f'<div class="shw-gtitle">{g.title}</div><div class="shw-gscope">{g.scope}</div>',
+                            unsafe_allow_html=True)
+                st.plotly_chart(g.fig, key=f"{key_prefix}_{gid}", width="stretch", theme=None,
+                                config={"displayModeBar": False})
+                st.caption(f"**Graphic {gid}.** {g.caption}")
+        else:
+            components.html(g.html, height=700, scrolling=True)
+            st.download_button(f"Download Graphic {gid} (report)", g.html,
+                               file_name=f"report_graphic_{gid}.html", mime="text/html",
+                               key=f"{key_prefix}_dl_{gid}")
+
+    def show_graphics(ids, key_prefix):
+        """The most useful graphics first (tested findings); the rest one click away."""
+        ids = [i for i in ids if i in store]
+        first, more = figures.split_for_display(ids, store)
+        for gid in first:
+            show_graphic(gid, key_prefix)
+        if more:
+            with st.expander(f"More graphics from this answer ({len(more)})"):
+                for gid in more:
+                    show_graphic(gid, key_prefix)
+
+    for n, t in enumerate(st.session_state.turns):
         st.chat_message("user").write(t["question"])
         with st.chat_message("assistant"):
             st.write(t["answer"])
-            show_trace(t["trace"])
+            show_graphics(t.get("graphics", []), f"h{n}")
+            show_trace(t["trace"], f"h{n}")
+
+    if st.session_state.turns:      # related questions under the latest answer, side by side
+        last = st.session_state.turns[-1]
+        # One step deeper on what was just found, and (once a briefing exists) a tested finding
+        # about the same service that has not come up yet.
+        ideas = followups.suggest_detail(last["trace"], asked=[t["question"] for t in st.session_state.turns],
+                                         history=[t["trace"] for t in st.session_state.turns[:-1]], limit=2)
+        if ideas:
+            st.caption("Related questions")
+            for col, (i, idea) in zip(st.columns(len(ideas)), enumerate(ideas)):
+                if col.button(idea["text"], key=f"fu{len(st.session_state.turns)}_{i}", width="stretch",
+                              help=idea["why"] or None):
+                    st.session_state.pending_q = idea["text"]
+                    st.rerun()
 
     if st.session_state.turns:
         st.caption(f"Follow-ups use the last {agent.MAX_TURNS} questions as context. "
-                   "Start a new conversation to change topic.")
+                   "Start a new conversation to change topic. "
+                   "To combine graphics, type e.g. \"make a report from graphics 1, 3 and 8\".")
+
     q = st.chat_input("e.g. How does counselling compare for first-generation students?")
+    q = q or st.session_state.pop("pending_q", None)
     if q:
         st.chat_message("user").write(q)
-        with st.spinner("Thinking..."):
-            out = agent.ask(q, history=st.session_state.turns)
-        with st.chat_message("assistant"):
-            st.write(out["answer"])
-            show_trace(out["trace"])
-        st.session_state.turns.append({"question": q, "answer": out["answer"], "trace": out["trace"]})
+        n = len(st.session_state.turns)
+        wanted = figures.parse_report_request(q)
+        if wanted:  # no model call: the report is plain code
+            try:
+                gid = figures.build_report(wanted, store)
+                answer, gids = f"Created Graphic {gid}, a report built from graphics {wanted}.", [gid]
+            except KeyError as e:
+                answer, gids = f"{e.args[0]} Existing graphics: {sorted(store)}.", []
+            out = {"answer": answer, "trace": []}
+        else:
+            with st.spinner("Thinking..."):
+                out = agent.ask(q, history=st.session_state.turns)
+            gids = figures.register_from_trace(out["trace"], store, answer=out["answer"])
+        st.session_state.turns.append({"question": q, "answer": out["answer"],
+                                       "trace": out["trace"], "graphics": gids})
+        st.rerun()      # redraw from history, so the new answer gets its suggestions and stable controls
+
 
 with dash_tab:
-    import streamlit.components.v1 as components
     source = st.radio("Start from", ["Template", "Describe it", "Saved"], horizontal=True)
     spec = None
     if source == "Template":
@@ -176,23 +298,62 @@ with dash_tab:
         with st.expander("Dashboard spec (JSON)"):
             st.json(spec)
 
-with equity_tab:
-    con = analysis.connect()
-    svc = st.selectbox("Service", ["(all)"] + analysis.service_summary(con)["service"].tolist())
-    tests, flags, thin = analysis.equity_scan(con, None if svc == "(all)" else svc)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Comparisons run", len(tests))
-    c2.metric("Flagged gaps", len(flags))
-    c3.metric("Groups too small to compare", len(thin))
-    st.dataframe(flags if len(flags) else tests.nsmallest(10, "q"), width="stretch")
-    st.caption("Flag = group differs from everyone else by >= 10 points in % agree, "
-               "after false-discovery-rate correction. Unflagged rows show the closest calls.")
-
 with comments_tab:
-    st.json(tools.comment_overview(None if svc == "(all)" else svc))
-    term = st.text_input("Search comments")
-    if term:
-        st.dataframe(tools.search_comments(term, None if svc == "(all)" else svc)["rows"])
+    # What students wrote, for staff to read: themes and tone once comments are labelled,
+    # and a search that always works. Comments were scrubbed of names, emails, phone and
+    # student numbers when the data was loaded.
+    con = analysis.connect()
+    counts = con.execute("SELECT service, COUNT(*) AS n FROM comments GROUP BY 1 ORDER BY n DESC").df()
+    if counts.empty:
+        st.info("There are no written comments in the survey data yet.")
+    else:
+        names = {"(all)": "All services", **{v: figures._service({"service": v}, "service") for v in counts["service"]}}
+        svc = st.selectbox("Service", list(names), format_func=names.get, key="comments_service")
+        service = None if svc == "(all)" else svc
+        total = int(counts["n"].sum() if service is None else counts.loc[counts["service"] == svc, "n"].iloc[0])
+        st.caption(f"{total:,} written comments from the survey. Names, emails, phone numbers and student "
+                   "numbers were removed when the data was loaded.")
 
-with quality_tab:
-    st.dataframe(analysis.connect().execute("SELECT * FROM data_quality").df(), width="stretch")
+        overview = tools.comment_overview(service)
+        if "error" in overview:
+            st.info("Comments have not been sorted into themes yet, so the summary below is not available. "
+                    "You can still search what students wrote.")
+            with st.expander("For the project team"):
+                st.markdown("Sorting comments into themes and tone uses the UBC-hosted model and takes a few "
+                            "minutes. From the project folder run:")
+                st.code("python -m shw_analytics.comments --label\npython -m shw_analytics.comments --embed",
+                        language="bash")
+                st.caption("The first command adds themes and tone. The second lets search find comments by "
+                           "meaning, not only by exact words.")
+        else:
+            themes_fig, tone_fig = figures.comment_charts(overview)
+            c1, c2 = st.columns([3, 2])
+            with c1, st.container(border=True):
+                st.markdown('<div class="shw-gtitle">What students write about</div>'
+                            '<div class="shw-gscope">Number of comments mentioning each theme; a comment can '
+                            'have up to three</div>', unsafe_allow_html=True)
+                st.plotly_chart(themes_fig, width="stretch", theme=None, config={"displayModeBar": False},
+                                key="comment_themes")
+            with c2, st.container(border=True):
+                st.markdown('<div class="shw-gtitle">Tone of comments</div>'
+                            '<div class="shw-gscope">Sorted automatically, so individual comments can be '
+                            'mislabelled</div>', unsafe_allow_html=True)
+                st.plotly_chart(tone_fig, width="stretch", theme=None, config={"displayModeBar": False},
+                                key="comment_tone")
+
+        term = st.text_input("Search what students wrote", placeholder="e.g. booking, waiting, felt heard")
+        if term:
+            found = tools.search_comments(term, service, k=15)
+            rows = found.get("rows", [])
+            by_meaning = str(found.get("search_mode", "")).startswith("semantic")
+            if not rows:
+                st.info("No comments matched. Try a different or shorter word.")
+            else:
+                st.caption(f"{len(rows)} comments " + ("closest in meaning to" if by_meaning else "containing words from")
+                           + f" “{term}”. Read them as examples, not as a count of how common the issue is.")
+                for r in rows:
+                    with st.container(border=True):
+                        st.markdown(f"“{r['text']}”")
+                        st.caption(names.get(r.get("service"), str(r.get("service", ""))))
+
+st.markdown(theme.footer_html(), unsafe_allow_html=True)

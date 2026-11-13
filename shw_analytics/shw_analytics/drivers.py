@@ -143,13 +143,13 @@ def priority_items(con, service: str):
     notes = [
         f"The overall measure is {out_label} (answered by {n_out} students). Each question's "
         "link is how closely its answers move with that overall measure (Spearman correlation, "
-        "0 = no link, 1 = perfect). 'Fix first' = more strongly linked than the median question "
+        "0 = no link, 1 = perfect). A priority = more strongly linked than the median question "
         "and scoring below the median.",
-        "A link is not a cause: say 'most closely linked to', never 'drives'. Improving a fix-first "
-        "area is a reasonable thing to try, not a guaranteed result.",
-        f"A priority must be 'fix first' in at least {round(100 * STABLE)}% of 1,000 re-samples of "
+        "A link is not a cause: say 'most closely linked to', never 'drives'. Describe a priority; "
+        "do not tell staff what to do about it, and do not use the words 'fix first'.",
+        f"A priority must hold in at least {round(100 * STABLE)}% of 1,000 re-samples of "
         "students, and its link must be clearly stronger than a typical question's; otherwise the "
-        "ranking is not reliable enough to act on.",
+        "ranking is not reliable enough to report as a priority.",
     ]
     if verdict == "no_single_item_stands_out":
         notes.append("The links are all similar, which usually means students who are happy "

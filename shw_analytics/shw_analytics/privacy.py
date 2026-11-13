@@ -14,9 +14,11 @@ _PATTERNS = [
     (re.compile(r"(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}"), "[PHONE]"),
     (re.compile(r"\b\d{8}\b"), "[STUDENT_NO]"),
     # titles / roles followed by a capitalised word: "Dr. Patel", "counsellor Amy"
-    (re.compile(r"\b(?:Dr|Mr|Mrs|Ms|Mx|Nurse|Counsellor|Counselor|Advisor|Adviser)\.?\s+[A-Z][a-z]+",
-                re.IGNORECASE), "[STAFF_NAME]"),
-    (re.compile(r"\bmy name is\s+[A-Z][a-z]+", re.IGNORECASE), "my name is [NAME]"),
+    # Only the title ignores case; the name must start with a capital, so "the nurse was kind"
+    # is left alone while "nurse Sarah" is removed.
+    (re.compile(r"\b(?i:Dr|Mr|Mrs|Ms|Mx|Nurse|Counsellor|Counselor|Advisor|Adviser)\.?\s+[A-Z][a-z]+"),
+     "[STAFF_NAME]"),
+    (re.compile(r"\b(?i:my name is)\s+[A-Z][a-z]+"), "my name is [NAME]"),
 ]
 
 

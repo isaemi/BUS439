@@ -1,0 +1,8 @@
+# Streamlit theme matched to the UBC brand (see shw_analytics/theme.py).
+[theme]
+base = "light"
+primaryColor = "#0055B7"
+backgroundColor = "#F4F6F9"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#14233B"
+font = "sans serif"

@@ -8,3 +8,4 @@ streamlit>=1.36
 altair>=5
 paramiko>=3.2  # only for SFTP sync
 statsmodels>=0.14
+plotly>=5.20  # charts in the chat tab

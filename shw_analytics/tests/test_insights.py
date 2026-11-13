@@ -206,6 +206,19 @@ def test_volume_test_matches_independent_poisson_interval():
     assert v["change_pct"] == 43.6 and v["ci_pct"] == [28.3, 60.8] and v["p"] < 0.001
 
 
+def test_service_starting_a_day_into_the_window_is_still_compared():
+    # All services cover both windows; this service just has no appointment on the first day.
+    con = _con({"before": {"Undergraduate": (120, 10)}, "after": {"Undergraduate": (120, 10)}})
+    df = con.execute("SELECT * FROM appointments").df()
+    other = df.assign(service_line="Medical", student_key="m" + df["student_key"])
+    first = other["start_time"].min()
+    other = other[other["start_time"] > first]                       # Medical's first day is later
+    con2 = duckdb.connect()
+    con2.register("appointments", pd.concat([df, other], ignore_index=True))
+    r = insights.what_changed(con2, "no_show_rate", "academic_level", service_line="Medical")
+    assert r["periods"]["before"].startswith("2025-09-01")
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

@@ -205,6 +205,7 @@ pipeline, not to judge answer quality.
 | `shw_analytics/stats.py` | Shared statistics: re-sampling ranges with each student counted once, correction for running many tests, splitting a change into "who came" and "change within groups" | One tested implementation behind every finding |
 | `shw_analytics/insights.py` | `what_changed`: the same dates a year apart, with the change in students seen tested and each change split into its parts | Tells a real change from a shift in who came |
 | `shw_analytics/care_patterns.py` | What happens after a first visit, which appointments are missed more often, and movement between services | Continuity and no-show questions, answered with tests |
+| `shw_analytics/survey_trends.py` | `survey_changed`: survey ratings in the latest window against the same dates a year earlier, by service, question and student group; a group is listed only if it moved differently from everyone else | Tells staff when a group's experience shifts, and how big a shift the data could have missed |
 | `shw_analytics/drivers.py` | Which survey questions are most closely linked to the overall rating and score low, kept only if stable | Where to look first in the survey |
 | `shw_analytics/briefing.py` | The term briefing: runs the analyses above across services, checks the findings again together, ranks them, and compares with the last briefing | Findings without anyone having to ask; no model involved |
 | `shw_analytics/followups.py` | The related questions under each answer, chosen by rules from what was found and what the conversation has already covered | Leads staff through the analysis an analyst would do |
@@ -212,6 +213,8 @@ pipeline, not to judge answer quality.
 | `shw_analytics/figures.py` | A chart for each analysis, shown in the chat and the briefing; builds the downloadable report | Charts state the finding and match the answer |
 | `shw_analytics/provenance.py` | Plain-language "How this answer was built" cards | Staff can check any answer |
 | `shw_analytics/plain.py` | Keeps p-values and similar jargon, and any "I re-checked" preamble, out of answers | Answers read the same way every time |
+| `shw_analytics/consistency.py`, `scripts/consistency_check.py` | Asks ten questions three ways each and reports whether the same analyses ran and the same figures came back | Evidence for "different phrasings give consistent results" |
+| `shw_analytics/reconcile.py`, `scripts/reconcile_chr.py` | Compares the app's appointment counts with figures typed in from the CHR dashboards, finds which way of counting the dashboard uses, and states how the app counts | Answers "how is that data being counted?" |
 | `shw_analytics/usage.py` | Logs each gateway request's tokens and cost (never content) to `data/usage_log.csv` | The team can see its share of the shared key |
 | `scripts/make_synthetic_survey.py` | A synthetic survey with planted patterns, realistic comments and answer labels | Try every feature before real data arrives |
 | `scripts/install_*.py` | One-time patches used during development; all are already applied on this branch | Nothing to run; kept for the record |
@@ -340,7 +343,7 @@ the previous one. The tool combines every file and counts each response once.
 | Differences between student groups, tested for significance | ✅ Survey |
 | Wait time and its link to ratings (Medical, Counselling) | ✅ Survey |
 | Barriers students report | ⚠️ Partly: "fell short" answers and comments; students who never used a service aren't surveyed |
-| Trends over time | ⚠️ Needs more than one survey period |
+| Whether survey ratings changed, and for which student groups | ✅ Survey, same dates a year apart (or the window before); needs responses in both windows |
 | Appointments, visits per student, days in care, no-shows, trends | ✅ CHR export (synthetic until real exports arrive) |
 | Why groups differ in service use | ✅ CHR, broken into students, visits per student, days in care, services, no-shows |
 | Whether survey feedback reflects who visits | ✅ Survey + CHR, by faculty |
@@ -357,6 +360,24 @@ When a question needs missing data, the tool says so in its first sentence,
 names the missing source, and then gives the closest evidence the survey can
 offer. Update the `coverage` section of `dictionary.yaml` whenever a new data
 source is connected.
+
+---
+
+## Checking the tool against SHW's own standards
+
+SHW's leadership named accuracy and consistency as conditions for trusting the tool. Two checks
+produce evidence for each. Neither changes any data.
+
+```bash
+python scripts/consistency_check.py     # 30 questions to the model; writes data/consistency_report.md
+python scripts/reconcile_chr.py         # writes data/reconcile_template.csv and prints how the app counts
+python scripts/reconcile_chr.py --compare data/reconcile_template.csv   # after typing in dashboard figures
+```
+
+The consistency check costs about as much as asking 30 questions in the app. The reconciliation
+uses no model: someone with a CHR dashboard open types its monthly figures into the sheet, and the
+report says which way of counting the dashboard matches (booked, not cancelled, or attended) and
+where the two still differ.
 
 ---
 
@@ -400,6 +421,11 @@ source is connected.
 - The briefing tests each analysis on its own and then checks the findings that
   passed again together. It is not a single correction across every test run.
 - Sorting comments into themes has to be redone after each data rebuild.
+- Changes in survey ratings for small groups are hard to detect: with about 3,000 responses a
+  year, a group's rating must move by roughly 14 points between two-month windows to show up.
+  `survey_changed` reports this figure, and a longer window lowers it.
+- The no-show rate divides by all booked appointments, cancelled ones included. Confirm with SHW
+  that this matches how they define it.
 - The chi-square association tests rarely return a result on survey-sized data
   (see the table above).
 - Small-cell hiding doesn't prevent differencing (a total minus the visible

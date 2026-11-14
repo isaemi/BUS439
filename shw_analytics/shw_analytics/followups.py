@@ -53,9 +53,52 @@ def _name(svc):
     return _NAMES.get(svc, svc) if svc else "our services"
 
 
-def _c(rung, text, svc, subject, dim=None):
-    """A candidate suggestion and the (service, subject, rung, dimension) it would cover."""
-    return {"text": text, "key": (svc, subject, rung, dim), "rung": RUNGS.index(rung)}
+def _c(rung, text, svc, subject, dim=None, call=None, expect=None):
+    """A candidate suggestion and the (service, subject, rung, dimension) it would cover. `call`
+    is the (tool, arguments) the question leads to, when that is cheap enough to check first;
+    `expect(result)` says whether that result is the finding the question promises."""
+    return {"text": text, "key": (svc, subject, rung, dim), "rung": RUNGS.index(rung), "call": call, "expect": expect}
+
+
+def _who(dimension, group):
+    """'students reporting a disability', 'graduate students' (lower case, for mid-sentence)."""
+    from .figures import _who as who
+    text = who(dimension, group)
+    return text[0].lower() + text[1:]
+
+
+def has_finding(name, res):
+    """Did this analysis find something tested, as opposed to describing or finding nothing?"""
+    if not isinstance(res, dict) or "error" in res:
+        return False
+    if name == "survey_changed":
+        return bool(res.get("groups_that_changed") or res.get("questions_that_changed"))
+    if name in ("noshow_patterns", "care_journeys", "equity_flags"):
+        return bool(res.get("flags"))
+    if name == "priority_items":
+        return bool(res.get("priorities"))
+    if name == "what_changed":
+        return (res.get("verdict") not in (None, "no_clear_change")
+                or res.get("volume_change", {}).get("verdict") in ("increase", "decrease"))
+    if name == "group_vs_everyone":
+        return any(x.get("significant") for x in res.get("by_service", []))
+    if name == "chr_trend":
+        return any(r.get("notable_change") for r in res.get("rows", []))
+    return name in ("explain_difference", "term_briefing")
+
+
+_TESTED = {"survey_changed", "noshow_patterns", "care_journeys", "equity_flags", "priority_items", "what_changed",
+           "group_vs_everyone", "explain_difference", "wait_time_vs_rating", "service_pathways", "term_briefing"}
+
+
+def importance(name, res):
+    """3 = a tested finding, 2 = a tested analysis that found nothing, 1 = a description, 0 = other."""
+    if has_finding(name, res):
+        return 3
+    if name in _TESTED:
+        return 2
+    return 1 if name in ("item_summary", "service_summary", "chr_summary", "chr_trend", "compare_groups",
+                         "search_comments", "comment_overview", "survey_vs_visits") else 0
 
 
 # ---- what each kind of analysis has already covered -------------------------------------
@@ -99,7 +142,13 @@ def covered_by(name, args, res):
     if name == "group_vs_everyone":
         return {(svc, "equity", "segment", dim)}
     if name in ("search_comments", "comment_overview"):
-        return {(svc, s, "voice", None) for s in ("volume", "no_show", "continuity", "priorities", "equity")}
+        return {(svc, s, "voice", None) for s in ("volume", "no_show", "continuity", "priorities", "equity", "survey_trend")}
+    if name == "survey_changed":
+        out = ({(s, "survey_trend", "test", None) for s in (None, *_NAMES)} if svc is None
+               else {(svc, "survey_trend", "test", None)})
+        for g in res.get("groups_that_changed", []):        # the answer has just named a group that rates it lower
+            out |= {(_norm(g.get("service")), "equity", "test", None), (None, "equity", "test", None)}
+        return out
     return set()
 
 
@@ -181,14 +230,52 @@ def candidates(name, args, res):
             *[_c("test", f"Which parts of {_name(o)} are most closely linked to overall satisfaction?", o, "priorities")
               for o in ("counselling", "medical", "wellness_adv") if o != svc],
         ]
+    if name == "survey_changed":
+        groups, questions = res.get("groups_that_changed") or [], res.get("questions_that_changed") or []
+        out = []
+        if groups:
+            g = groups[0]
+            s, dim, who = _norm(g.get("service")), g["dimension"], _who(g["dimension"], g["group"])
+            if not a.get("dimension") or not a.get("service"):
+                out.append(_c("segment", f"Have ratings from {who} changed in the other services too?", None, "survey_trend", dim,
+                              call=("survey_changed", {"dimension": dim}),
+                              expect=lambda r, s=s: any(_norm(x.get("service")) != s for x in r.get("groups_that_changed", []))))
+            out.append(_c("segment", f"How do {who} rate each service compared with other students?", None, "equity", dim,
+                          call=("group_vs_everyone", {"dimension": dim, "value": g["group"]})))
+            out.append(_c("voice", f"What are students saying about {_name(s)} in their comments?", s, "survey_trend"))
+            out.append(_c("test", f"Which parts of {_name(s)} are most closely linked to overall satisfaction?", s, "priorities"))
+        if questions:
+            q = questions[0]
+            s = _norm(q.get("service"))
+            out.append(_c("test", f"Is “{q['item'][:60]}” closely linked to overall satisfaction with {_name(s)}?", s, "priorities"))
+            out.append(_c("voice", f"What are students saying about {_name(s)} in their comments?", s, "survey_trend"))
+        if not out:
+            s = svc
+            out = [_c("test", f"Do some groups of students rate {_name(s)} lower?", s, "equity",
+                      call=("equity_flags", {"service": s} if s else {})),
+                   _c("test", f"Which parts of {_name(s or 'counselling')} are most closely linked to overall satisfaction?",
+                      s or "counselling", "priorities")]
+        return out
     if name == "equity_flags":
         low = sorted((f for f in res.get("flags", []) if f.get("gap_pts", 0) < 0), key=lambda f: f["gap_pts"])
         if low:
             s = _norm(low[0].get("service"))
-            return [_c("test", f"Which parts of {_name(s)} are most closely linked to overall satisfaction?", s, "priorities"),
+            who = _who(low[0]["dimension"], low[0]["group"])
+            return [_c("test", f"Has the gap for {who} in {_name(s)} widened since last year?", s, "survey_trend",
+                       call=("survey_changed", {"service": s, "dimension": low[0]["dimension"]})),
+                    _c("test", f"Which parts of {_name(s)} are most closely linked to overall satisfaction?", s, "priorities"),
                     _c("voice", f"What are students saying about {_name(s)}?", s, "equity")]
         return [_c("test", "Which parts of counselling are most closely linked to overall satisfaction?", "counselling", "priorities"),
                 _c("describe", "Which kinds of appointments are missed most often?", None, "no_show")]
+    if name == "group_vs_everyone" and a.get("dimension") and a.get("value"):
+        gaps = [x for x in res.get("by_service", []) if x.get("gap_pts") is not None]
+        worst = min(gaps, key=lambda x: x["gap_pts"]) if gaps else {}
+        s = _norm(worst.get("service")) or svc or "counselling"
+        who = _who(a["dimension"], res.get("group", "").split(" = ")[-1] or a["value"])
+        return [_c("test", f"Has the gap for {who} in {_name(s)} widened since last year?", s, "survey_trend",
+                   call=("survey_changed", {"service": s, "dimension": a["dimension"]})),
+                _c("voice", f"What are students saying about {_name(s)} in their comments?", s, "survey_trend"),
+                _c("test", f"Which parts of {_name(s)} are most closely linked to overall satisfaction?", s, "priorities")]
     if name in ("compare_groups", "group_vs_everyone"):
         return [_c("test", f"Do some groups of students rate {_name(svc)} lower?", svc, "equity"),
                 _c("test", f"Which parts of {_name(svc or 'counselling')} are most closely linked to overall satisfaction?",
@@ -232,6 +319,8 @@ def _finding_question(f):
         return f"Which parts of {_name(svc)} are most closely linked to overall satisfaction?", (svc, "priorities", "test", None)
     if kind == "equity":
         return f"Do some groups of students rate {_name(svc)} lower?", (svc, "equity", "test", None)
+    if kind == "survey_change":
+        return f"Have survey ratings for {_name(svc)} changed since last year?", (svc, "survey_trend", "test", None)
     return None, None
 
 
@@ -250,6 +339,33 @@ def _wider(covered, taken, service):
         if q and key not in covered and q.lower().rstrip("?") not in taken:
             return {"text": q, "kind": "wider", "why": _WHY_WIDER, "key": key}
     return None
+
+
+# ---- checking a suggestion before it is offered ------------------------------------------
+
+_CHECKED: dict = {}
+CHECKABLE = {"survey_changed", "group_vs_everyone", "equity_flags", "noshow_patterns", "chr_trend"}   # all under a second or two
+
+
+def check(candidate):
+    """'finding', 'nothing', 'dead_end' (it would fail or needs data we lack) or 'unknown' (not checked).
+    Runs the analysis the question leads to; results are remembered until the data changes."""
+    call = candidate.get("call")
+    if not call or call[0] not in CHECKABLE:
+        return "unknown"
+    try:
+        import json
+        from . import config, tools
+        key = (call[0], json.dumps(call[1], sort_keys=True), config.DB_PATH.stat().st_mtime)
+        if key not in _CHECKED:
+            _CHECKED[key] = tools.call(call[0], dict(call[1]))
+        res = _CHECKED[key]
+        if not isinstance(res, dict) or "error" in res:
+            return "dead_end"
+        found = candidate["expect"](res) if candidate.get("expect") else has_finding(call[0], res)
+        return "finding" if found else "nothing"
+    except Exception:
+        return "unknown"
 
 
 # ---- putting it together ---------------------------------------------------------------
@@ -287,17 +403,32 @@ def suggest_detail(trace, asked=(), history=(), limit=2):
                 if f.get("next"):
                     add(f["next"], "deeper", "The next question for one of the briefing's findings.")
 
-    # Deeper: the lowest rung not yet covered, starting from the last analysis that found something.
+    # Deeper: start from the analysis that FOUND something (not whichever ran last), and take the
+    # first question that has not been covered and is not a dead end, preferring one that is
+    # known to lead to a tested result.
+    ranked = sorted(enumerate(steps), key=lambda x: (-importance(x[1][0], x[1][2]), x[0]))
     service = None
     pool = []
-    for name, args, res in reversed(steps):
+    for _, (name, args, res) in ranked:
         cands = [c for c in candidates(name, args, res) if c["key"] not in covered]
-        service = service or _svc(args, res if isinstance(res, dict) else None)
+        if importance(name, res) and service is None:
+            service = _svc(args, res if isinstance(res, dict) else None)
+            if name == "survey_changed" and isinstance(res, dict):
+                moved = (res.get("groups_that_changed") or res.get("questions_that_changed") or [{}])[0]
+                service = _norm(moved.get("service")) or service
         pool.append(cands)
     first = next((c for c in pool if c), [])
     if first and len(out) < limit:
-        add(first[0]["text"], "deeper", "The next step on what this answer found.")
-        covered.add(first[0]["key"])
+        states = [(c, check(c)) for c in first[:3]]
+        alive = [(c, st) for c, st in states if st != "dead_end"] or [(c, "unknown") for c in first[3:4]]
+        alive.sort(key=lambda x: x[1] != "finding")              # stable: a known finding first, otherwise ladder order
+        for c, st in alive[:1]:
+            add(c["text"], "deeper", "A tested difference shows up here." if st == "finding"
+                else "The next step on what this answer found.")
+            covered.add(c["key"])
+        for c, st in states:
+            if st == "dead_end":
+                covered.add(c["key"])                             # never offer it later in this answer either
 
     # Wider: a tested briefing finding about the same service that has not come up.
     if len(out) < limit:
@@ -310,7 +441,7 @@ def suggest_detail(trace, asked=(), history=(), limit=2):
         for c in cands:
             if len(out) >= limit:
                 break
-            if c["key"] not in covered and add(c["text"], "deeper", "A further step on what this answer found."):
+            if c["key"] not in covered and check(c) != "dead_end" and add(c["text"], "deeper", "A further step on what this answer found."):
                 covered.add(c["key"])
     for name, args, res in steps:
         if name == "insight_playbook" and isinstance(res, dict):

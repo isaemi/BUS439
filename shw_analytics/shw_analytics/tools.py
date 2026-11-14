@@ -319,6 +319,16 @@ def priority_items(service: str):
         return {"error": str(e)}
 
 
+def survey_changed(service: str = None, dimension: str = None, compare: str = "last_year",
+                   window_days: int = 61):
+    from . import survey_trends
+    try:
+        r = survey_trends.survey_changed(_con(), service, dimension, compare, int(window_days))
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": "Student experience survey, responses in the two windows shown"}
+
+
 def term_briefing():
     from . import briefing
     try:
@@ -696,7 +706,7 @@ REGISTRY = {"lookup_survey_items": lookup_survey_items, "demographic_association
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
-            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "term_briefing": term_briefing, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
+            "explain_difference": explain_difference, "what_changed": what_changed, "survey_changed": survey_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "term_briefing": term_briefing, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
             "comment_overview": comment_overview, "run_sql": run_sql}
 
 
@@ -832,3 +842,25 @@ TOOL_SPECS.append({"type": "function", "function": {
         "'what should we know', 'headline findings', 'what should leadership know', 'anything "
         "surprising', 'where should we focus'. One call is enough; do not re-run the analyses."),
     "parameters": {"type": "object", "properties": {}, "required": []}}})
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "survey_changed",
+    "description": (
+        "Have SURVEY ratings changed over time? Compares the latest window of survey responses with "
+        "the same dates a year earlier (or the window just before): each service's % agree, which "
+        "questions moved, and which student groups now rate a service differently from before, all "
+        "tested and corrected for the number of checks. Use for 'has satisfaction changed', 'are any "
+        "groups rating us worse than they used to', 'what changed in the survey since last year'. "
+        "For appointment measures (no-shows, visits) use what_changed instead."),
+    "parameters": {"type": "object", "properties": {
+        "service": {"type": "string", "description": "Optional: counselling, medical, wellness_adv or info_desk. Omit for all."},
+        "dimension": {"type": "string",
+                      "description": "Optional group to look at, e.g. disability_any, intl_or_domestic, academic_level, "
+                                     "gender. Omit to scan every group the survey records."},
+        "compare": {"type": "string", "enum": ["last_year", "previous"],
+                    "description": "last_year (default, avoids seasonal effects) or the window just before."},
+        "window_days": {"type": "integer",
+                        "description": "Length of each window in days (default 61). Longer windows hold more "
+                                       "responses and can detect smaller changes."}},
+        "required": []}}})

@@ -476,7 +476,7 @@ _SIG_NOT_A_CLAIM = re.compile(
 
 # Tools that test with confidence intervals rather than p-values. A successful result from
 # one of these counts as a significance test for the "no test was run" warning.
-INTERVAL_TOOLS = {"term_briefing", "priority_items", "what_changed", "care_journeys", "noshow_patterns", "service_pathways"}
+INTERVAL_TOOLS = {"term_briefing", "survey_changed", "priority_items", "what_changed", "care_journeys", "noshow_patterns", "service_pathways"}
 
 
 def _has_interval_test(steps):

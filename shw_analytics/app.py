@@ -214,8 +214,11 @@ with ask_tab:
         last = st.session_state.turns[-1]
         # One step deeper on what was just found, and (once a briefing exists) a tested finding
         # about the same service that has not come up yet.
-        ideas = followups.suggest_detail(last["trace"], asked=[t["question"] for t in st.session_state.turns],
-                                         history=[t["trace"] for t in st.session_state.turns[:-1]], limit=2)
+        if "ideas" not in last:        # worked out once per answer: some suggestions are checked before they are shown
+            last["ideas"] = followups.suggest_detail(
+                last["trace"], asked=[t["question"] for t in st.session_state.turns],
+                history=[t["trace"] for t in st.session_state.turns[:-1]], limit=2)
+        ideas = last["ideas"]
         if ideas:
             st.caption("Related questions")
             for col, (i, idea) in zip(st.columns(len(ideas)), enumerate(ideas)):

@@ -89,6 +89,11 @@ TOOLS = {
                      "{measure} into a change in which students came and a change within each "
                      "{dimension} group. Also tested whether the number of students changed.",
                      INTERVALS),
+    "survey_changed": ("Survey ratings, same dates compared: {periods}{for_service}", "survey",
+                       "Compared survey responses in the two windows: each service's share of positive "
+                       "ratings, each question, and each student group, with every student counted once.",
+                       "Each comparison is tested, and corrected for the number of questions and groups "
+                       "checked. The survey is anonymous, so the two windows hold different students."),
     "care_journeys": ("What happens after a first visit{for_service}", "chr",
                       "Followed each student's first new episode of care for a fixed period: "
                       "single visits, quick returns, time to a second visit, and coming back "

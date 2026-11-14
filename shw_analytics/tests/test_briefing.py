@@ -57,6 +57,28 @@ def test_every_finding_carries_figures_how_it_was_tested_and_a_next_question():
             assert briefing.graphic(f) is not None, name
 
 
+def test_survey_changes_over_time_become_findings_with_the_anonymous_survey_caveat():
+    r = {"periods": {"before": "2025-09-01 to 2025-10-31", "after": "2026-09-01 to 2026-10-31"},
+         "groups_checked": 40, "questions_checked": 30, "tests_run": 74, "smallest_group_change_detectable_pts": 14.0,
+         "groups_that_changed": [{"service": "counselling", "dimension": "disability_any", "group": "yes",
+                                  "respondents_before": 36, "respondents_after": 37, "pct_agree_before": 45.4,
+                                  "pct_agree_after": 26.2, "change_pts": -19.2, "ci_pts": [-29.9, -8.5], "q": 0.03,
+                                  "everyone_else_change_pts": 5.4, "differs_from_everyone_else": True}],
+         "questions_that_changed": [{"service": "medical", "item_code": "MED1_6", "item": "I was seen close to my appointment time",
+                                     "pct_agree_before": 34.6, "pct_agree_after": 58.1, "students_before": 162,
+                                     "students_after": 167, "change_pts": 23.5, "q": 0.0005}],
+         "services": [{"service": "counselling", "verdict": "no clear change", "pct_agree_before": 49.0, "pct_agree_after": 51.4}]}
+    found, same = briefing._from_survey_change(("survey_changed", {}, r))
+    assert [f["kind"] for f in found] == ["survey_change", "survey_change"]
+    assert found[0]["headline"] == "Students reporting a disability rate counselling 19.2 points lower than a year ago"
+    assert "moved differently from everyone else" in found[0]["detail"] and "different students" in found[0]["detail"]
+    assert found[1]["headline"].startswith("Medical: “I was seen close to my appointment time” is 23.5 points higher")
+    assert same == ["Survey ratings (Counselling): no clear change overall (49% then 51.4%)."]
+    assert all(briefing.graphic(f) is not None for f in found)
+    r.update(groups_that_changed=[], questions_that_changed=[])
+    assert "would need to move about 14 points" in briefing._from_survey_change(("survey_changed", {}, r))[1][-1]
+
+
 def test_p_from_a_range():
     assert briefing._p_from_ci(0, [-1, 1]) == 1.0
     assert abs(briefing._p_from_ci(1.96, [0, 3.92]) - 0.05) < 0.001
@@ -85,6 +107,8 @@ def _fake_world(monkey):
         f["q"] = 0.5                                              # should not survive the overall correction
 
     def call(name, **args):
+        if name == "survey_changed":                              # one survey period in this stand-in world
+            return (name, {}, {"error": "there is no full comparison window"})
         step = copy.deepcopy(weak if name == "equity_flags" else canned[name])
         return (name, {k: v for k, v in args.items() if v is not None}, step[2])
     monkey(tools, "_con", lambda: con)
@@ -115,7 +139,7 @@ def test_whole_briefing_is_ranked_varied_and_corrected_together():
     assert b["dropped_after_correction"] >= 1 and b["tests_run"] > 20 and b["synthetic"] is True
     strengths = [f["strength"] for f in b["findings"]]
     assert strengths == sorted(strengths, reverse=True)
-    assert any("survey covers one period" in m for m in b["not_checked"])
+    assert any("does not yet cover the same dates a year earlier" in m for m in b["not_checked"])
     chat = briefing.for_chat(b)
     assert len(chat["findings"]) == len(b["findings"]) and "step" not in json.dumps(chat) and chat["stayed_the_same"]
     assert "synthetic test data" in chat["note"]

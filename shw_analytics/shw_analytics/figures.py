@@ -897,6 +897,68 @@ def comment_charts(overview):
     return fig, fig2
 
 
+def _survey_changed(args, r):
+    """Before and after, one row per group or question that moved (or per service when none did)."""
+    span, before, after = _periods(r["periods"])
+    rows = []
+    for g in r.get("groups_that_changed", []):
+        rows.append({**g, "label": _who(g["dimension"], g["group"]), "sub": f"{_service(g, 'service')}, all questions",
+                     "n": (g["respondents_before"], g["respondents_after"]), "hot": True})
+    for q in r.get("questions_that_changed", []):
+        rows.append({**q, "label": _wrap(q["item"], 38), "sub": _service(q, "service"),
+                     "n": (q["students_before"], q["students_after"]), "hot": True})
+    flagged = bool(rows)
+    if not rows:
+        rows = [{**s, "label": _service(s, "service"), "sub": "all questions",
+                 "n": (s["respondents_before"], s["respondents_after"]), "hot": s["verdict"] != "no clear change"}
+                for s in r.get("services", [])]
+    if not rows:
+        return []
+    rows = rows[:MAX_ROWS]
+    fig = _fig(height=_rows_height(len(rows), base=170, per=58), legend=True, left=250)
+    ylab = [f"{x['label']}<br><span style='color:{theme.MUTED}'>{x['sub']}, n={x['n'][0]:,} then {x['n'][1]:,}</span>"
+            for x in rows]
+    for x, y in zip(rows, ylab):
+        fig.add_trace(go.Scatter(x=[x["pct_agree_before"], x["pct_agree_after"]], y=[y, y], mode="lines", showlegend=False,
+                                 line=dict(color=HILITE if x["hot"] else theme.OVERALL, width=4), hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=[x["pct_agree_before"] for x in rows], y=ylab, mode="markers", name=before,
+                             marker=dict(size=12, color="white", line=dict(color=theme.MUTED, width=2)),
+                             hovertemplate="%{x:g}%<extra></extra>"))
+    fig.add_trace(go.Scatter(x=[x["pct_agree_after"] for x in rows], y=ylab, mode="markers", name=after,
+                             marker=dict(size=13, color=[HILITE if x["hot"] else theme.FOCUS for x in rows]),
+                             hovertemplate="%{x:g}%<extra></extra>"))
+    for x, y in zip(rows, ylab):
+        left = x["pct_agree_after"] < x["pct_agree_before"]
+        fig.add_annotation(x=x["pct_agree_after"], y=y, xanchor="right" if left else "left", xshift=-12 if left else 12,
+                           showarrow=False, text=f"<b>{_signed(x['change_pts'])} pts</b>",
+                           font=dict(color=theme.TEXT if x["hot"] else theme.MUTED))
+    vals = [v for x in rows for v in (x["pct_agree_before"], x["pct_agree_after"])]
+    width = max(vals) - min(vals) or 10
+    fig.update_xaxes(title_text="Students agreeing", ticksuffix="%", range=[min(vals) - width * 0.6 - 4, max(vals) + width * 0.6 + 4])
+    fig.update_yaxes(showgrid=False, autorange="reversed")
+    if flagged:
+        top = rows[0]
+        down = top["change_pts"] < 0
+        if "dimension" in top:
+            title = (f"{top['label']} rate {_service(top, 'service').lower()} {abs(top['change_pts']):g} points "
+                     f"{'lower' if down else 'higher'} than a year ago" if before != "Before" else
+                     f"{top['label']} rate {_service(top, 'service').lower()} {abs(top['change_pts']):g} points "
+                     f"{'lower' if down else 'higher'} than before")
+        else:
+            title = f"“{_short(top['item'], 70)}”: {abs(top['change_pts']):g} points {'lower' if down else 'higher'} than {before}"
+        cap = (f"Groups and questions whose ratings moved between the two windows, after correcting for "
+               f"{r.get('tests_run', 'many')} checks. Orange = tested and stands out.")
+    else:
+        title = "No clear change in survey ratings"
+        cap = "No service, question or group moved by more than chance would explain."
+        if r.get("smallest_group_change_detectable_pts"):
+            cap += (f" With this many responses, a group's rating would need to move about "
+                    f"{r['smallest_group_change_detectable_pts']:g} points to be detected.")
+    cap += " The survey is anonymous, so the two windows hold different students. A pattern, not a cause."
+    scope = f"Survey ratings, {span}. Share of students rating 4 or 5; each student counted once"
+    return [_Spec(title, scope, cap, _titled(fig, title, scope), 3 if flagged else 2)]
+
+
 def _briefing(args, r):
     """Charts for the term briefing's findings, titled with each finding's headline."""
     from . import briefing
@@ -913,7 +975,7 @@ BUILDERS = {"what_changed": _what_changed, "noshow_patterns": _noshow, "care_jou
             "equity_flags": _equity, "group_vs_everyone": _group_vs, "chr_trend": _trend,
             "chr_summary": _summary, "item_summary": _items, "compare_groups": _compare,
             "service_summary": _services, "wait_time_vs_rating": _wait, "survey_vs_visits": _representation,
-            "term_briefing": _briefing}
+            "term_briefing": _briefing, "survey_changed": _survey_changed}
 
 
 # ---- registry ------------------------------------------------------------------------

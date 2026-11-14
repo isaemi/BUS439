@@ -85,7 +85,8 @@ if not config.DB_PATH.exists():
                "`python -m shw_analytics.ingest data/exports`.")
     st.stop()
 
-brief_tab, ask_tab, dash_tab, comments_tab = st.tabs(["Briefing", "Ask a question", "Dashboards", "Comments"])
+# The conversation comes first: asking questions is the main way to use the tool.
+ask_tab, brief_tab, dash_tab, comments_tab = st.tabs(["Ask a question", "Briefing", "Dashboards", "Comments"])
 
 
 with brief_tab:

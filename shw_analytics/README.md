@@ -42,7 +42,7 @@ Built by BUS 439 team BFPSST for SHW.
                                     ▼
              LTIC AI Gateway ──► Qwen (on-prem at UBC ARC)
                                     │
-                          Streamlit app: Briefing · Ask a question ·
+                          Streamlit app: Ask a question · Briefing ·
                           Dashboards · Comments
 ```
 
@@ -232,7 +232,7 @@ pipeline, not to judge answer quality.
 
 | File | What it does | Why it matters |
 |---|---|---|
-| `app.py` | The Streamlit app: Briefing, Ask a question, Dashboards, Comments, plus data upload in the sidebar | Everything staff use, in one place |
+| `app.py` | The Streamlit app: Ask a question, Briefing, Dashboards, Comments, plus data upload in the sidebar | Everything staff use, in one place |
 | `scripts/smoke_test.py` | Offline checks, from data loading to guardrails to dashboards | Confirms nothing broke after a change, without needing the model |
 | `docs/SCHEMA.md` | Tables, columns, keys and relationships, generated from the live database | A quick reference for anyone writing queries or extending the tool |
 | `scripts/make_synthetic_chr.py` | Builds a realistic fake CHR export with planted patterns (graduate students attend more sessions, autumn and March peaks, growth on last year) | Build and demo CHR features before real exports arrive |

@@ -319,6 +319,29 @@ def priority_items(service: str):
         return {"error": str(e)}
 
 
+def logistic_regression(service: str, outcome_item: str, predictor_items: list,
+                        controls: list = None, interaction: bool = False):
+    """Survey questions weighed together against agreeing with an outcome question."""
+    from . import regression
+    if isinstance(predictor_items, str):
+        predictor_items = [p.strip() for p in re.split(r"[,;]", predictor_items) if p.strip()]
+    if isinstance(controls, str):
+        controls = [c.strip() for c in re.split(r"[,;]", controls) if c.strip()]
+    outcome_code = _verified_item_code(service, outcome_item)
+    codes = [_verified_item_code(service, p) for p in predictor_items or []]
+    if not outcome_code or not codes or not all(codes):
+        unverified = ([outcome_item] if not outcome_code else []) + \
+                     [p for p, c in zip(predictor_items or [], codes) if not c]
+        return {"error": "Survey item not verified. Call lookup_survey_items for this service and "
+                         "choose exact item codes before retrying.",
+                "service": service, "unverified": unverified}
+    try:
+        return regression.logistic_regression(_con(), service, outcome_code, codes,
+                                              controls, bool(interaction))
+    except ValueError as e:
+        return {"error": str(e)}
+
+
 def term_briefing():
     from . import briefing
     try:
@@ -696,7 +719,7 @@ REGISTRY = {"lookup_survey_items": lookup_survey_items, "demographic_association
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
-            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "term_briefing": term_briefing, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
+            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "term_briefing": term_briefing, "priority_items": priority_items, "logistic_regression": logistic_regression, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
             "comment_overview": comment_overview, "run_sql": run_sql}
 
 
@@ -820,6 +843,33 @@ TOOL_SPECS.append({"type": "function", "function": {
     "parameters": {"type": "object", "properties": {
         "service": {"type": "string", "description": "counselling, medical, wellness_adv or info_desk."}},
         "required": ["service"]}}})
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "logistic_regression",
+    "description": (
+        "Weighs several survey questions together for one service (logistic regression, one row "
+        "per student): for each question, the odds ratio of agreeing (4-5) with an outcome question "
+        "per one-point higher rating, on its own and adjusted for the others, with 95% ranges and "
+        "correction for several tests. Optional background groups to account for, and an "
+        "interaction between the first two questions. Use for 'is X still linked to Y after "
+        "accounting for Z', 'which of these matter most when weighed together', 'are students who "
+        "feel welcomed more likely to recommend us'. Call lookup_survey_items first and pass "
+        "verified item codes. Say 'linked to higher odds', never 'causes' or 'increases'."),
+    "parameters": {"type": "object", "properties": {
+        "service": _SVC,
+        "outcome_item": {"type": "string",
+                         "description": "Verified item code of the outcome, e.g. overall satisfaction or recommending."},
+        "predictor_items": {"type": "array", "items": {"type": "string"},
+                            "description": "1-6 verified item codes to weigh together against the outcome."},
+        "controls": {"type": "array", "items": {"type": "string"},
+                     "description": "Optional background questions to account for: academic_level, "
+                                    "year_of_study, enrollment_status, living_arrangement, new_to_ubc, "
+                                    "intl_or_domestic, first_generation, indigenous, racialized, gender, "
+                                    "trans_experience, disability_any."},
+        "interaction": {"type": "boolean",
+                        "description": "Also test whether the first two questions' links depend on each other (default false)."}},
+        "required": ["service", "outcome_item", "predictor_items"]}}})
 
 
 TOOL_SPECS.append({"type": "function", "function": {

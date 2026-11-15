@@ -69,6 +69,14 @@ with st.sidebar:
             st.rerun()
         else:
             st.error((r.stderr or r.stdout).strip().splitlines()[-1])
+    #if chr_files and st.button("Rebuild database from existing files"):
+    #    with st.spinner("Rebuilding from saved CSV files..."):
+    #        r = _rebuild()
+    #    if r.returncode == 0:
+    #        st.success("Database updated.")
+    #        st.rerun()
+    #    else:
+    #        st.error((r.stderr or r.stdout).strip().splitlines()[-1])
     if os.getenv("QUALTRICS_API_TOKEN") and st.button("Pull latest from Qualtrics"):
         with st.spinner("Exporting from Qualtrics..."):
             r = subprocess.run([sys.executable, "-m", "shw_analytics.qualtrics_api"],
@@ -81,65 +89,70 @@ with st.sidebar:
             st.error((r.stderr or r.stdout).strip().splitlines()[-1])
 
 if not config.DB_PATH.exists():
-    st.warning("No data yet. Add a Qualtrics export in the sidebar, or run "
-               "`python -m shw_analytics.ingest data/exports`.")
+    st.warning("No database yet. Please upload a Qualtrics or CHR export.")
     st.stop()
+
+with analysis.connect() as _db_check:
+    _has_survey = bool(_db_check.execute("SELECT COUNT(*) FROM responses").fetchone()[0])
 
 brief_tab, ask_tab, dash_tab, comments_tab = st.tabs(["Briefing", "Ask a question", "Dashboards", "Comments"])
 
 
 with brief_tab:
-    # What changed and what is worth a look, without anyone having to ask. Built from tested
-    # analyses only, with no model involved, so the same data always gives the same briefing.
-    b = briefing.cached()
-    if b is None:
-        st.markdown("#### This term at a glance")
-        st.write("The briefing runs a fixed set of tested analyses across services, checks the findings again "
-                 "together, and shows the few that hold up, along with what stayed the same and what could "
-                 "not be checked.")
-        if st.button("Build this term's briefing", type="primary"):
-            with st.spinner("Running the analyses and checking them together (about half a minute)..."):
-                b = briefing.build()
-    if b:
-        changes = briefing.compare(b, briefing.previous(b))
-        briefing.save(b)
-        st.markdown("#### This term at a glance")
-        st.caption(
-            f"Appointment records to {b.get('data_through', 'n/a')}"
-            + (f", comparing {b['compared']}" if b.get("compared") else "")
-            + (f". Survey responses from {b['survey_period']}" if b.get("survey_period") else "")
-            + f". {b['tests_run']} checks were run. Each analysis was tested on its own, and the findings that "
-              "passed were checked again together; only those that held up are shown."
-            + (f" Compared with the briefing from {changes['since']}." if changes.get("since") else "")
-            + (" **The appointment records are synthetic test data, not real.**" if b.get("synthetic") else ""))
-        if not b["findings"]:
-            st.info("Nothing stood out after checking everything together. See what stayed the same below.")
-        for n, f in enumerate(b["findings"], 1):
-            tag = changes["status"].get(f["id"])
-            tag_html = f'<span class="shw-tag{" new" if tag == "new" else ""}">{tag.capitalize()}</span>' if tag else ""
-            with st.container(border=True):
-                st.markdown(f'<div class="shw-num">FINDING {n}{tag_html}</div>'
-                            f'<div class="shw-gtitle">{f["headline"]}</div>'
-                            f'<div class="shw-detail">{f["detail"]}</div>', unsafe_allow_html=True)
-                spec = briefing.graphic(f)
-                if spec:
-                    st.plotly_chart(spec.fig, key=f"brief_{n}", width="stretch", theme=None,
-                                    config={"displayModeBar": False})
-                st.markdown(f'<div class="shw-small">{f["tested"]}</div>'
-                            f'<div class="shw-small"><b>Related question:</b> {f["next"]}</div>',
-                            unsafe_allow_html=True)
-        for title, items in (("Also noted", [f["headline"] for f in b["also"]]),
-                             ("No longer showing since last time", changes.get("gone", [])),
-                             ("What stayed the same", b["unchanged"]),
-                             ("What could not be checked", b["not_checked"])):
-            if items:
-                with st.expander(f"{title} ({len(items)})", expanded=title == "What stayed the same"):
-                    st.markdown("\n".join(f"- {i}" for i in items))
-        if st.session_state.get("brief_html_key") != b["data_key"]:
-            st.session_state.brief_html = briefing.to_html(b, changes)
-            st.session_state.brief_html_key = b["data_key"]
-        st.download_button("Download the briefing (HTML)", st.session_state.brief_html,
-                           file_name=f"shw_briefing_{b.get('data_through', 'latest')}.html", mime="text/html")
+    if not _has_survey:
+        st.info('The briefing is unavailable until Qualtrics survey data is loaded.')
+    else:
+        # What changed and what is worth a look, without anyone having to ask. Built from tested
+        # analyses only, with no model involved, so the same data always gives the same briefing.
+        b = briefing.cached()
+        if b is None:
+            st.markdown("#### This term at a glance")
+            st.write("The briefing runs a fixed set of tested analyses across services, checks the findings again "
+                     "together, and shows the few that hold up, along with what stayed the same and what could "
+                     "not be checked.")
+            if st.button("Build this term's briefing", type="primary"):
+                with st.spinner("Running the analyses and checking them together (about half a minute)..."):
+                    b = briefing.build()
+        if b:
+            changes = briefing.compare(b, briefing.previous(b))
+            briefing.save(b)
+            st.markdown("#### This term at a glance")
+            st.caption(
+                f"Appointment records to {b.get('data_through', 'n/a')}"
+                + (f", comparing {b['compared']}" if b.get("compared") else "")
+                + (f". Survey responses from {b['survey_period']}" if b.get("survey_period") else "")
+                + f". {b['tests_run']} checks were run. Each analysis was tested on its own, and the findings that "
+                  "passed were checked again together; only those that held up are shown."
+                + (f" Compared with the briefing from {changes['since']}." if changes.get("since") else "")
+                + (" **The appointment records are synthetic test data, not real.**" if b.get("synthetic") else ""))
+            if not b["findings"]:
+                st.info("Nothing stood out after checking everything together. See what stayed the same below.")
+            for n, f in enumerate(b["findings"], 1):
+                tag = changes["status"].get(f["id"])
+                tag_html = f'<span class="shw-tag{" new" if tag == "new" else ""}">{tag.capitalize()}</span>' if tag else ""
+                with st.container(border=True):
+                    st.markdown(f'<div class="shw-num">FINDING {n}{tag_html}</div>'
+                                f'<div class="shw-gtitle">{f["headline"]}</div>'
+                                f'<div class="shw-detail">{f["detail"]}</div>', unsafe_allow_html=True)
+                    spec = briefing.graphic(f)
+                    if spec:
+                        st.plotly_chart(spec.fig, key=f"brief_{n}", width="stretch", theme=None,
+                                        config={"displayModeBar": False})
+                    st.markdown(f'<div class="shw-small">{f["tested"]}</div>'
+                                f'<div class="shw-small"><b>Related question:</b> {f["next"]}</div>',
+                                unsafe_allow_html=True)
+            for title, items in (("Also noted", [f["headline"] for f in b["also"]]),
+                                 ("No longer showing since last time", changes.get("gone", [])),
+                                 ("What stayed the same", b["unchanged"]),
+                                 ("What could not be checked", b["not_checked"])):
+                if items:
+                    with st.expander(f"{title} ({len(items)})", expanded=title == "What stayed the same"):
+                        st.markdown("\n".join(f"- {i}" for i in items))
+            if st.session_state.get("brief_html_key") != b["data_key"]:
+                st.session_state.brief_html = briefing.to_html(b, changes)
+                st.session_state.brief_html_key = b["data_key"]
+            st.download_button("Download the briefing (HTML)", st.session_state.brief_html,
+                               file_name=f"shw_briefing_{b.get('data_through', 'latest')}.html", mime="text/html")
 
 
 with ask_tab:
@@ -229,7 +242,8 @@ with ask_tab:
                    "Start a new conversation to change topic. "
                    "To combine graphics, type e.g. \"make a report from graphics 1, 3 and 8\".")
 
-    q = st.chat_input("e.g. How does counselling compare for first-generation students?")
+    q = st.chat_input("e.g. How did counselling no-shows change from last fall to this fall?" if not _has_survey
+                      else "e.g. How does counselling compare for first-generation students?")
     q = q or st.session_state.pop("pending_q", None)
     if q:
         st.chat_message("user").write(q)
@@ -252,108 +266,114 @@ with ask_tab:
 
 
 with dash_tab:
-    source = st.radio("Start from", ["Template", "Describe it", "Saved"], horizontal=True)
-    spec = None
-    if source == "Template":
-        c1, c2, c3, c4 = st.columns(4)
-        name = c1.selectbox("Template", dashboard.TEMPLATES)
-        svc_choice = c2.selectbox("Service", dashboard.services(),
-                                  disabled=name not in ("service_deep_dive", "focus_report"))
-        focus = None
-        if name == "focus_report":
-            dims = analysis.group_dimensions()
-            dim = c3.selectbox("Focus on", dims, index=dims.index("faculty"),
-                               format_func=lambda d: dashboard.DIMENSION_LABELS.get(d, d))
-            values = analysis.focus_values(analysis.connect(), dim)
-            default = values.index("Arts") if "Arts" in values else 0
-            focus = {"dimension": dim, "value": c4.selectbox("Group", values, index=default)}
-        spec = dashboard.template(name, svc_choice, focus)
-    elif source == "Describe it":
-        request = st.text_area("What should the dashboard show?",
-                               "How do Arts students experience SHW services compared with everyone?")
-        if st.button("Plan dashboard"):
-            with st.spinner("Planning..."):
-                planned, errs = dashboard.plan(request)
-            if errs:
-                st.error("The model's plan still had problems:\n\n" + "\n".join(f"- {e}" for e in errs))
-            else:
-                st.session_state.dash_spec = planned
-        spec = st.session_state.get("dash_spec")
+    if not _has_survey:
+        st.info('Survey dashboards require a Qualtrics export. CHR questions remain available in Ask a question.')
     else:
-        names = dashboard.saved()
-        if names:
-            spec = dashboard.load(st.selectbox("Saved dashboard", names))
+        source = st.radio("Start from", ["Template", "Describe it", "Saved"], horizontal=True)
+        spec = None
+        if source == "Template":
+            c1, c2, c3, c4 = st.columns(4)
+            name = c1.selectbox("Template", dashboard.TEMPLATES)
+            svc_choice = c2.selectbox("Service", dashboard.services(),
+                                      disabled=name not in ("service_deep_dive", "focus_report"))
+            focus = None
+            if name == "focus_report":
+                dims = analysis.group_dimensions()
+                dim = c3.selectbox("Focus on", dims, index=dims.index("faculty"),
+                                   format_func=lambda d: dashboard.DIMENSION_LABELS.get(d, d))
+                values = analysis.focus_values(analysis.connect(), dim)
+                default = values.index("Arts") if "Arts" in values else 0
+                focus = {"dimension": dim, "value": c4.selectbox("Group", values, index=default)}
+            spec = dashboard.template(name, svc_choice, focus)
+        elif source == "Describe it":
+            request = st.text_area("What should the dashboard show?",
+                                   "How do Arts students experience SHW services compared with everyone?")
+            if st.button("Plan dashboard"):
+                with st.spinner("Planning..."):
+                    planned, errs = dashboard.plan(request)
+                if errs:
+                    st.error("The model's plan still had problems:\n\n" + "\n".join(f"- {e}" for e in errs))
+                else:
+                    st.session_state.dash_spec = planned
+            spec = st.session_state.get("dash_spec")
         else:
-            st.info("No saved dashboards yet.")
+            names = dashboard.saved()
+            if names:
+                spec = dashboard.load(st.selectbox("Saved dashboard", names))
+            else:
+                st.info("No saved dashboards yet.")
 
-    if spec:
-        panels = dashboard.build(spec)
-        page = charts.render_page(spec, panels, dashboard.page_meta(spec))
-        components.html(page, height=charts.estimate_height(panels), scrolling=True)
-        c1, c2, c3 = st.columns([2, 1, 1])
-        save_name = c1.text_input("Save as", spec.get("title", "dashboard"))
-        if c2.button("Save"):
-            st.success(f"Saved to {dashboard.save(spec, save_name)}")
-        c3.download_button("Download as HTML", page, file_name=f"{save_name}.html", mime="text/html")
-        with st.expander("Dashboard spec (JSON)"):
-            st.json(spec)
+        if spec:
+            panels = dashboard.build(spec)
+            page = charts.render_page(spec, panels, dashboard.page_meta(spec))
+            components.html(page, height=charts.estimate_height(panels), scrolling=True)
+            c1, c2, c3 = st.columns([2, 1, 1])
+            save_name = c1.text_input("Save as", spec.get("title", "dashboard"))
+            if c2.button("Save"):
+                st.success(f"Saved to {dashboard.save(spec, save_name)}")
+            c3.download_button("Download as HTML", page, file_name=f"{save_name}.html", mime="text/html")
+            with st.expander("Dashboard spec (JSON)"):
+                st.json(spec)
 
 with comments_tab:
-    # What students wrote, for staff to read: themes and tone once comments are labelled,
-    # and a search that always works. Comments were scrubbed of names, emails, phone and
-    # student numbers when the data was loaded.
-    con = analysis.connect()
-    counts = con.execute("SELECT service, COUNT(*) AS n FROM comments GROUP BY 1 ORDER BY n DESC").df()
-    if counts.empty:
-        st.info("There are no written comments in the survey data yet.")
+    if not _has_survey:
+        st.info('Survey comments require a Qualtrics export.')
     else:
-        names = {"(all)": "All services", **{v: figures._service({"service": v}, "service") for v in counts["service"]}}
-        svc = st.selectbox("Service", list(names), format_func=names.get, key="comments_service")
-        service = None if svc == "(all)" else svc
-        total = int(counts["n"].sum() if service is None else counts.loc[counts["service"] == svc, "n"].iloc[0])
-        st.caption(f"{total:,} written comments from the survey. Names, emails, phone numbers and student "
-                   "numbers were removed when the data was loaded.")
-
-        overview = tools.comment_overview(service)
-        if "error" in overview:
-            st.info("Comments have not been sorted into themes yet, so the summary below is not available. "
-                    "You can still search what students wrote.")
-            with st.expander("For the project team"):
-                st.markdown("Sorting comments into themes and tone uses the UBC-hosted model and takes a few "
-                            "minutes. From the project folder run:")
-                st.code("python -m shw_analytics.comments --label\npython -m shw_analytics.comments --embed",
-                        language="bash")
-                st.caption("The first command adds themes and tone. The second lets search find comments by "
-                           "meaning, not only by exact words.")
+        # What students wrote, for staff to read: themes and tone once comments are labelled,
+        # and a search that always works. Comments were scrubbed of names, emails, phone and
+        # student numbers when the data was loaded.
+        con = analysis.connect()
+        counts = con.execute("SELECT service, COUNT(*) AS n FROM comments GROUP BY 1 ORDER BY n DESC").df()
+        if counts.empty:
+            st.info("There are no written comments in the survey data yet.")
         else:
-            themes_fig, tone_fig = figures.comment_charts(overview)
-            c1, c2 = st.columns([3, 2])
-            with c1, st.container(border=True):
-                st.markdown('<div class="shw-gtitle">What students write about</div>'
-                            '<div class="shw-gscope">Number of comments mentioning each theme; a comment can '
-                            'have up to three</div>', unsafe_allow_html=True)
-                st.plotly_chart(themes_fig, width="stretch", theme=None, config={"displayModeBar": False},
-                                key="comment_themes")
-            with c2, st.container(border=True):
-                st.markdown('<div class="shw-gtitle">Tone of comments</div>'
-                            '<div class="shw-gscope">Sorted automatically, so individual comments can be '
-                            'mislabelled</div>', unsafe_allow_html=True)
-                st.plotly_chart(tone_fig, width="stretch", theme=None, config={"displayModeBar": False},
-                                key="comment_tone")
+            names = {"(all)": "All services", **{v: figures._service({"service": v}, "service") for v in counts["service"]}}
+            svc = st.selectbox("Service", list(names), format_func=names.get, key="comments_service")
+            service = None if svc == "(all)" else svc
+            total = int(counts["n"].sum() if service is None else counts.loc[counts["service"] == svc, "n"].iloc[0])
+            st.caption(f"{total:,} written comments from the survey. Names, emails, phone numbers and student "
+                       "numbers were removed when the data was loaded.")
 
-        term = st.text_input("Search what students wrote", placeholder="e.g. booking, waiting, felt heard")
-        if term:
-            found = tools.search_comments(term, service, k=15)
-            rows = found.get("rows", [])
-            by_meaning = str(found.get("search_mode", "")).startswith("semantic")
-            if not rows:
-                st.info("No comments matched. Try a different or shorter word.")
+            overview = tools.comment_overview(service)
+            if "error" in overview:
+                st.info("Comments have not been sorted into themes yet, so the summary below is not available. "
+                        "You can still search what students wrote.")
+                with st.expander("For the project team"):
+                    st.markdown("Sorting comments into themes and tone uses the UBC-hosted model and takes a few "
+                                "minutes. From the project folder run:")
+                    st.code("python -m shw_analytics.comments --label\npython -m shw_analytics.comments --embed",
+                            language="bash")
+                    st.caption("The first command adds themes and tone. The second lets search find comments by "
+                               "meaning, not only by exact words.")
             else:
-                st.caption(f"{len(rows)} comments " + ("closest in meaning to" if by_meaning else "containing words from")
-                           + f" “{term}”. Read them as examples, not as a count of how common the issue is.")
-                for r in rows:
-                    with st.container(border=True):
-                        st.markdown(f"“{r['text']}”")
-                        st.caption(names.get(r.get("service"), str(r.get("service", ""))))
+                themes_fig, tone_fig = figures.comment_charts(overview)
+                c1, c2 = st.columns([3, 2])
+                with c1, st.container(border=True):
+                    st.markdown('<div class="shw-gtitle">What students write about</div>'
+                                '<div class="shw-gscope">Number of comments mentioning each theme; a comment can '
+                                'have up to three</div>', unsafe_allow_html=True)
+                    st.plotly_chart(themes_fig, width="stretch", theme=None, config={"displayModeBar": False},
+                                    key="comment_themes")
+                with c2, st.container(border=True):
+                    st.markdown('<div class="shw-gtitle">Tone of comments</div>'
+                                '<div class="shw-gscope">Sorted automatically, so individual comments can be '
+                                'mislabelled</div>', unsafe_allow_html=True)
+                    st.plotly_chart(tone_fig, width="stretch", theme=None, config={"displayModeBar": False},
+                                    key="comment_tone")
 
-st.markdown(theme.footer_html(), unsafe_allow_html=True)
+            term = st.text_input("Search what students wrote", placeholder="e.g. booking, waiting, felt heard")
+            if term:
+                found = tools.search_comments(term, service, k=15)
+                rows = found.get("rows", [])
+                by_meaning = str(found.get("search_mode", "")).startswith("semantic")
+                if not rows:
+                    st.info("No comments matched. Try a different or shorter word.")
+                else:
+                    st.caption(f"{len(rows)} comments " + ("closest in meaning to" if by_meaning else "containing words from")
+                               + f" “{term}”. Read them as examples, not as a count of how common the issue is.")
+                    for r in rows:
+                        with st.container(border=True):
+                            st.markdown(f"“{r['text']}”")
+                            st.caption(names.get(r.get("service"), str(r.get("service", ""))))
+
+    st.markdown(theme.footer_html(), unsafe_allow_html=True)

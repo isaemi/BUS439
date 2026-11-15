@@ -295,20 +295,73 @@ def load(target, db_path=None, chr_dir=None):
     import os
     from pathlib import Path
     d = load_dictionary()
-    df, texts = read_many(resolve_paths(target))
-    check_format(df, d)
-    tables = build_tables(df.drop(columns="_source"), texts, d)
+    survey_paths = [p for p in resolve_paths(target) if p.is_file()]
     final = Path(db_path) if db_path else config.DB_PATH
+    final.parent.mkdir(parents=True, exist_ok=True)
     tmp = final.with_suffix(".building.duckdb")
     tmp.unlink(missing_ok=True)
-    write_db(tables, tmp)
+    if survey_paths:
+        # Unchanged Qualtrics ingestion path, including validation and all survey tables.
+        df, texts = read_many(survey_paths)
+        check_format(df, d)
+        tables = build_tables(df.drop(columns="_source"), texts, d)
+        write_db(tables, tmp)
+    else:
+        # CHR-only mode: keep empty, typed survey tables for the shared agent/schema
+        # utilities. Never invent survey responses or ratings.
+        from . import chr as chr_
+        folder = Path(chr_dir) if chr_dir is not None else chr_.CHR_DIR
+        if not folder.exists() or not any(folder.glob("*.csv")):
+            raise FileNotFoundError("No Qualtrics or CHR CSV exports found.")
+        con = duckdb.connect(str(tmp))
+        try:
+            con.execute("""CREATE TABLE responses (
+                response_id VARCHAR, recorded_at TIMESTAMP, channel VARCHAR,
+                finished BOOLEAN, progress DOUBLE, service_code INTEGER,
+                service VARCHAR, service_name VARCHAR, birth_year INTEGER)""")
+            # The agent inspects response categories; preserve known dimension names.
+            response_cols = set(r[1] for r in con.execute("PRAGMA table_info('responses')").fetchall())
+            for meta in list(d.get("demographics", {}).values()) + list(d.get("followups", {}).values()):
+                col = meta["name"]
+                if col not in response_cols:
+                    con.execute('ALTER TABLE responses ADD COLUMN "' + col.replace('"', '""') + '" VARCHAR')
+                    response_cols.add(col)
+            for cb in d.get("checkbox", {}).values():
+                derived = cb.get("derive", {}).get("name")
+                if derived and derived not in response_cols:
+                    con.execute('ALTER TABLE responses ADD COLUMN "' + derived.replace('"', '""') + '" VARCHAR')
+                    response_cols.add(derived)
+            con.execute("""CREATE TABLE ratings (response_id VARCHAR, service VARCHAR,
+                item_code VARCHAR, score INTEGER, agree BOOLEAN, item_text VARCHAR)""")
+            con.execute("""CREATE TABLE items (service VARCHAR, block VARCHAR,
+                item_code VARCHAR, item_text VARCHAR, duplicate_of VARCHAR)""")
+            con.execute("""CREATE TABLE comments (response_id VARCHAR, service VARCHAR,
+                question_code VARCHAR, text VARCHAR)""")
+            con.execute("CREATE TABLE response_faculty (response_id VARCHAR, faculty VARCHAR)")
+            con.execute("CREATE TABLE response_disability (response_id VARCHAR, disability VARCHAR)")
+            con.execute("CREATE TABLE response_multi (response_id VARCHAR, question VARCHAR, value VARCHAR)")
+            con.execute("CREATE TABLE data_quality (issue VARCHAR, detail VARCHAR, count BIGINT)")
+            con.execute("""CREATE VIEW ratings_demo AS
+                SELECT r.*, s.* EXCLUDE (response_id, service)
+                FROM ratings r JOIN responses s USING (response_id)""")
+        finally:
+            con.close()
+        tables = {"data_quality": pd.DataFrame(columns=["issue", "detail", "count"])}
     # CHR appointment exports, if any, go into the same database before the swap.
-    import duckdb
+
     from . import chr as chr_
     con = duckdb.connect(str(tmp))
     chr_issues = chr_.add_tables(con, d, chr_dir or chr_.CHR_DIR)
+    if not survey_paths and not bool(con.execute("SELECT COUNT(*) FROM duckdb_tables() WHERE table_name = 'appointments'").fetchone()[0]):
+        con.close()
+        tmp.unlink(missing_ok=True)
+        raise ValueError("CHR files did not produce any valid appointment rows.")
     if chr_issues:
         dq = pd.concat([tables["data_quality"], pd.DataFrame(chr_issues)], ignore_index=True)
+
+        # Finish any pending DuckDB result before registering a DataFrame.
+        con.execute("SELECT 1").fetchall()
+
         con.register("tmp_dq", dq)
         con.execute("CREATE OR REPLACE TABLE data_quality AS SELECT * FROM tmp_dq")
         tables["data_quality"] = dq

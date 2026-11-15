@@ -692,7 +692,95 @@ TOOL_SPECS = [
         {"sql": {"type": "string"}}, ["sql"]),
 ]
 
-REGISTRY = {"lookup_survey_items": lookup_survey_items, "demographic_association": demographic_association, "test_association": test_association, "chr_categorical_association": chr_categorical_association, "describe_data": describe_data, "service_summary": service_summary,
+def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
+                  metric: str = None, scope: str = "all_weeks"):
+    """Seasonally matched CHR weekly anomaly screening.
+
+    When the period is omitted, use the latest period in the CHR export.
+    latest_completed returns only the last complete week, never an incomplete week.
+    """
+    from .anomaly_detection import detect_chr_anomalies, METRICS
+    if metric and metric not in METRICS:
+        return {"error": f"Unknown metric: {metric}. Choose from {', '.join(METRICS)}"}
+    if scope not in ("all_weeks", "latest_completed"):
+        return {"error": "scope must be all_weeks or latest_completed"}
+    if (term is None) != (year is None):
+        return {"error": "Supply both term and year, or omit both to use the latest CHR period."}
+
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        df = con.execute(
+            "SELECT start_time, outcome, service_line, provider_key FROM appointments"
+        ).df()
+        source = _chr_source(con)
+    finally:
+        con.close()
+
+    if df.empty:
+        return {"error": "No CHR appointments are available."}
+    df["start_time"] = pd.to_datetime(df["start_time"], errors="coerce")
+    df = df.loc[df["start_time"].notna()]
+    if df.empty:
+        return {"error": "No valid CHR appointment dates are available."}
+
+    if service_line:
+        available = df.loc[
+            df["service_line"].astype("string").str.casefold() == service_line.casefold()
+        ]
+        if available.empty:
+            return {"error": f"No CHR appointments found for service: {service_line}"}
+    else:
+        available = df
+
+    latest_date = available["start_time"].max().normalize()
+    if term is None:
+        month = latest_date.month
+        term = "Winter" if month <= 4 else "Summer" if month <= 8 else "Fall"
+        year = int(latest_date.year)
+
+    try:
+        result = detect_chr_anomalies(df, term=term, year=int(year), service=service_line)
+    except (ValueError, TypeError) as exc:
+        return {"error": str(exc), "latest_data_date": str(latest_date.date())}
+
+    flags = result["anomalies"]
+    weekly = result["weekly"]
+    if scope == "latest_completed":
+        selected_week = int(result["complete_weeks"])
+        flags = flags.loc[flags["week"] == selected_week]
+        weekly = weekly.loc[weekly["week"] == selected_week]
+    else:
+        selected_week = None
+
+    if metric:
+        flags = flags.loc[flags["metric"] == metric]
+        core = ["term", "year", "week", "service", "appointment_volume"]
+        if metric not in core:
+            core.append(metric)
+        weekly = weekly[core]
+
+    return {
+        "anomalies": json.loads(flags.to_json(orient="records")),
+        "weekly": json.loads(weekly.to_json(orient="records")),
+        "historical_years": result["historical_years"],
+        "complete_weeks": result["complete_weeks"],
+        "selected_week": selected_week,
+        "scope": scope,
+        "term": term,
+        "year": int(year),
+        "latest_data_date": str(latest_date.date()),
+        "service_scope": service_line or "All services combined",
+        "note": result["note"] + (
+            " Latest completed week only; the current/incomplete week was not tested."
+            if scope == "latest_completed" else ""
+        ),
+        "data_source": source,
+    }
+
+
+REGISTRY = {"chr_anomalies": chr_anomalies, "lookup_survey_items": lookup_survey_items, "demographic_association": demographic_association, "test_association": test_association, "chr_categorical_association": chr_categorical_association, "describe_data": describe_data, "service_summary": service_summary,
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
@@ -832,3 +920,25 @@ TOOL_SPECS.append({"type": "function", "function": {
         "'what should we know', 'headline findings', 'what should leadership know', 'anything "
         "surprising', 'where should we focus'. One call is enough; do not re-run the analyses."),
     "parameters": {"type": "object", "properties": {}, "required": []}}})
+
+
+TOOL_SPECS.append(_fn(
+    "chr_anomalies",
+    "Check whether CHR activity is unusual or out of the ordinary, including natural "
+    "questions like 'anything strange this week?' or 'are no-shows higher than normal?'. "
+    "Compare equivalent weeks in prior years of the SAME academic term. For 'this week', "
+    "'recently', or unspecified dates use scope=latest_completed and omit term/year; "
+    "the current incomplete week is never assessed. For an explicit season/year use "
+    "scope=all_weeks. Omit service_line for an all-services aggregate and omit metric "
+    "to examine all four metrics. Weekly cancellation and no-show rate flags use "
+    "Benjamini-Hochberg adjusted tests; volume and practitioner count flags are "
+    "operational screening alerts, NOT statistical significance tests.",
+    {"term": {"type": "string", "enum": ["Winter", "Summer", "Fall"],
+              "description": "Optional academic term; omit with year for latest data."},
+     "year": {"type": "integer", "description": "Optional; omit with term for latest data."},
+     "service_line": {"type": "string", "description": "Optional CHR service; omit for combined services."},
+     "metric": {"type": "string", "enum": ["appointment_volume", "cancellation_rate", "no_show_rate", "active_practitioners"],
+                "description": "Optional; omit to scan all four metrics."},
+     "scope": {"type": "string", "enum": ["all_weeks", "latest_completed"],
+               "description": "Use latest_completed for 'this week' or 'recently'; all_weeks for explicit terms."}},
+    []))

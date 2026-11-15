@@ -49,6 +49,24 @@ Rules:
 - "By category"/"by type" questions need the category breakdown (e.g. dimension
   "disability"), not the yes/no version. When groups are hidden, name them using
   hidden_groups; never guess which groups were hidden.
+- For questions about unusual, unexpected, abnormal or out-of-the-ordinary CHR
+  activity, choose chr_anomalies based on the question's meaning, not exact wording.
+  This includes conversational questions such as whether anything looks unusual
+  this week, whether a service is busier than normal, or whether missed appointments
+  seem unusually high. Do not require staff to name a statistical method.
+  - For an explicit term and year, pass them as requested and use scope=all_weeks.
+  - For "this week", "right now", or "recently" with no specific period, omit
+    term and year and use scope=latest_completed. Explain that the current week
+    cannot be assessed until complete, and state the latest completed week and
+    the latest date present in the data. Never call it this week's finding.
+  - If no service is specified, examine CHR across all services; describe the
+    result as an aggregate, not a finding for every individual service.
+  - If a metric is named, select it; otherwise check all four metrics.
+  - Explain only flagged weeks, with the matched historical years. Rate alerts
+    use Benjamini-Hochberg-adjusted tests and a minimum effect size. Count
+    alerts are operational screening flags, NOT statistically significant tests.
+    Never call a volume increase statistically significant. Always label
+    synthetic CHR results as simulated findings, not actual UBC trends.
 - Appointments, visits, demand, no-shows, days in care (CHR) -> chr_summary; over time or
   "compared with last year" -> chr_trend; WHY one group uses services more or less ->
   explain_difference (report its summary and findings; say which parts were tested);

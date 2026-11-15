@@ -6,3 +6,11 @@ backgroundColor = "#F4F6F9"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#14233B"
 font = "sans serif"
+
+# Only this laptop can open the app; other people on the same Wi-Fi cannot.
+[server]
+address = "localhost"
+
+# Do not send usage statistics to Streamlit.
+[browser]
+gatherUsageStats = false

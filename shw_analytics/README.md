@@ -82,7 +82,7 @@ Four principles shape the design:
 
 ## Getting started
 
-Requires Python 3.10 or newer.
+Requires Python 3.12 or newer (the pinned package versions need it).
 
 ```bash
 cd shw_analytics

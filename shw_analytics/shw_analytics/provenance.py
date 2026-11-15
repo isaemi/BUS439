@@ -108,6 +108,13 @@ TOOLS = {
                        "Checked by re-sampling students 1,000 times; a question is only called a "
                        "priority if it holds up and is clearly more linked than a "
                        "typical question."),
+    "logistic_regression": ("What is linked to agreeing when questions are weighed together{for_service}",
+                            "survey", "For each survey question, estimated how the odds of agreeing "
+                            "with the outcome question change with a one-point higher rating, on its "
+                            "own and with the other questions (and any background groups) taken into "
+                            "account at the same time.",
+                            "Each link has a 95% range of plausible values and is corrected for "
+                            "checking several questions at once. A link is not proof of cause."),
     "term_briefing": ("The term briefing: a fixed set of tested analyses", "both",
                       "Ran the full set of tested analyses across services (change since the same dates "
                       "last year, missed appointments, returning after a first visit, what matters most "

@@ -1,11 +1,12 @@
-pandas>=2.2
-duckdb>=1.1
-openai>=1.40
-pyyaml>=6
-scipy>=1.11
-numpy>=1.26
-streamlit>=1.36
-altair>=5
-paramiko>=3.2  # only for SFTP sync
-statsmodels>=0.14
-plotly>=5.20  # charts in the chat tab
+# Exact versions the app and tests were checked with. Update on purpose, then rerun the tests.
+pandas==3.1.1
+duckdb==2.0.0
+openai==3.51.0
+pyyaml==6.0.3
+scipy==1.18.1
+numpy==2.5.4
+streamlit==1.67.0
+altair==6.3.0
+paramiko==5.1.0  # only for SFTP sync
+statsmodels==0.15.0
+plotly==7.1.0  # charts in the chat tab

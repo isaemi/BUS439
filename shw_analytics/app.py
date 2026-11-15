@@ -189,8 +189,9 @@ with ask_tab:
                 st.caption(f"**Graphic {gid}.** {g.caption}")
         else:
             components.html(g.html, height=700, scrolling=True)
-            st.download_button(f"Download Graphic {gid} (report)", g.html,
-                               file_name=f"report_graphic_{gid}.html", mime="text/html",
+            kind = "dashboard" if g.caption.startswith("Dashboard") else "report"
+            st.download_button(f"Download Graphic {gid} ({kind})", g.html,
+                               file_name=f"shw_{kind}_graphic_{gid}.html", mime="text/html",
                                key=f"{key_prefix}_dl_{gid}")
 
     def show_graphics(ids, key_prefix):
@@ -231,7 +232,8 @@ with ask_tab:
     if st.session_state.turns:
         st.caption(f"Follow-ups use the last {agent.MAX_TURNS} questions as context. "
                    "Start a new conversation to change topic. "
-                   "To combine graphics, type e.g. \"make a report from graphics 1, 3 and 8\".")
+                   "To combine graphics, type e.g. \"make a dashboard from graphics 1, 3 and 8\" "
+                   "(side by side), or \"make a report from...\" (one column, for printing).")
 
     q = st.chat_input("e.g. How does counselling compare for first-generation students?")
     q = q or st.session_state.pop("pending_q", None)
@@ -241,8 +243,11 @@ with ask_tab:
         wanted = figures.parse_report_request(q)
         if wanted:  # no model call: the report is plain code
             try:
-                gid = figures.build_report(wanted, store)
-                answer, gids = f"Created Graphic {gid}, a report built from graphics {wanted}.", [gid]
+                kind = figures.report_kind(q)
+                gid = figures.build_report(wanted, store, layout=kind)
+                answer = (f"Created Graphic {gid}, a {kind} of graphics {', '.join(map(str, wanted))}. It is a snapshot of "
+                          "those charts as drawn; download it below to share or print.")
+                gids = [gid]
             except KeyError as e:
                 answer, gids = f"{e.args[0]} Existing graphics: {sorted(store)}.", []
             out = {"answer": answer, "trace": []}

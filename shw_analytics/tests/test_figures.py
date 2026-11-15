@@ -72,6 +72,22 @@ def test_charts_follow_what_the_answer_talks_about():
     assert {store[i].title for i in ids} == {t for t in [g.title for g in store.values()]} and len(ids) == len(plain)
 
 
+def test_dashboard_wording_is_understood_and_lays_charts_side_by_side():
+    assert figures.parse_report_request("make a dashboard using graphs 1, 5,6, 8.") == [1, 5, 6, 8]
+    assert figures.parse_report_request("put charts 2-4 on one page") == [2, 3, 4]
+    assert figures.parse_report_request("How have counselling appointments changed?") is None
+    assert figures.parse_report_request("make a dashboard for counselling") is None          # no graphics named
+    assert figures.report_kind("make a dashboard using graphs 1, 5") == "dashboard"
+    assert figures.report_kind("make a report from graphics 1 and 5") == "report"
+    store = {}
+    ids = figures.register_from_trace(TRACE, store)
+    dash = store[figures.build_report(ids[:3], store, layout="dashboard")]
+    page = store[figures.build_report(ids[:3], store)]
+    assert "<div class='grid'>" in dash.html and "<div class='grid'>" not in page.html
+    assert dash.caption.startswith("Dashboard from graphics") and page.caption.startswith("Report from graphics")
+    assert "does not change when new data is loaded" in dash.html and store[ids[0]].title in dash.html
+
+
 def test_same_question_twice_does_not_duplicate_graphics():
     store = {}
     a = figures.register_from_trace(TRACE, store)

@@ -1035,10 +1035,19 @@ def split_for_display(ids, store, first=SHOWN_FIRST):
 
 # ---- reports -------------------------------------------------------------------------
 
+_COMBINE = r"\b(report|one-pager|summary|dashboard|handout|document|page|pdf|export)s?\b"
+
+
+def report_kind(text):
+    """'dashboard' (charts side by side) when the request says dashboard, otherwise 'report' (one column)."""
+    return "dashboard" if re.search(r"\bdashboards?\b", text, re.I) else "report"
+
+
 def parse_report_request(text):
-    """'make a report from graphic 1 3 8 and 19' -> [1, 3, 8, 19]. None if not a report request."""
-    if not re.search(r"\b(report|one-pager|summary)\b", text, re.I) or \
-       not re.search(r"\b(graphic|graph|figure|chart)s?\b", text, re.I):
+    """'make a dashboard using graphs 1, 5,6, 8' or 'make a report from graphic 1 3 8 and 19'
+    -> the graphic numbers. None if the message is not asking to combine graphics."""
+    if not re.search(_COMBINE, text, re.I) or \
+       not re.search(r"\b(graphic|graph|figure|chart|plot)s?\b", text, re.I):
         return None
     ids = []
     for a, b in re.findall(r"(\d+)\s*(?:-|to)\s*(\d+)", text):
@@ -1048,8 +1057,13 @@ def parse_report_request(text):
     return list(dict.fromkeys(ids))
 
 
-def build_report(ids, store, title="Student Health and Wellbeing: findings"):
+def build_report(ids, store, title=None, layout="report"):
+    """Combine numbered graphics into one page. layout='report' stacks them in one column (best
+    for printing); layout='dashboard' places them side by side. Either way it is a snapshot of
+    the charts as they were drawn: it does not change when new data is loaded."""
     from .provenance import evidence_cards
+    dashboard = layout == "dashboard"
+    title = title or ("Student Health and Wellbeing: dashboard" if dashboard else "Student Health and Wellbeing: findings")
     missing = [i for i in ids if i not in store or store[i].kind != "chart"]
     if missing:
         raise KeyError(f"No chart with number(s): {missing}")
@@ -1064,7 +1078,9 @@ def build_report(ids, store, title="Student Health and Wellbeing: findings"):
             + f"<p class='cap'>{g.caption}</p>"
             + (f"<p class='how'>How this was worked out: {how}</p>" if how else "") + "</section>")
     css = (f"body{{font-family:{theme.FONT};background:{theme.PAGE};color:{theme.TEXT};margin:0;padding:32px 16px}}"
-           f"main{{max-width:940px;margin:auto}}h1{{color:{theme.NAVY};font-size:28px;margin:0 0 4px}}"
+           f"main{{max-width:{1500 if dashboard else 940}px;margin:auto}}h1{{color:{theme.NAVY};font-size:28px;margin:0 0 4px}}"
+           ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:18px;align-items:start}"
+           ".grid section{margin:0;min-width:0}"
            f".lede{{color:{theme.MUTED};margin:0 0 24px}}section{{background:{theme.CARD};border:1px solid {theme.BORDER};"
            "border-radius:10px;padding:18px 22px 14px;margin:0 0 18px;break-inside:avoid}"
            f".num{{color:{theme.MUTED};font-size:13px;margin:0 0 2px}}.cap{{margin:6px 0 4px;line-height:1.5}}"
@@ -1074,10 +1090,11 @@ def build_report(ids, store, title="Student Health and Wellbeing: findings"):
            "@media print{body{background:white;padding:0}section{border:none;padding:0 0 12px}}")
     html = (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>{title}</title>"
             f"{theme.font_link()}<style>{css}</style></head><body><main>"
-            f"<h1>{title}</h1><p class='lede'>{len(ids)} graphics from the SHW Student Feedback Assistant. "
-            "Each caption says what was measured and how far to trust it.</p>"
-            + "".join(parts) + "</main></body></html>")
+            f"<h1>{title}</h1><p class='lede'>{len(ids)} graphics from the SHW Student Feedback Assistant, as "
+            f"drawn on {pd.Timestamp.now():%-d %B %Y}. Each caption says what was measured and how far to trust it. "
+            "This is a snapshot: it does not change when new data is loaded.</p>"
+            + (f"<div class='grid'>{''.join(parts)}</div>" if dashboard else "".join(parts)) + "</main></body></html>")
     gid = max(store, default=0) + 1
-    store[gid] = Graphic(gid, "report", title, f"Report from graphics {', '.join(map(str, ids))}.",
+    store[gid] = Graphic(gid, "report", title, f"{'Dashboard' if dashboard else 'Report'} from graphics {', '.join(map(str, ids))}.",
                          html=html, source="report", parents=ids, weight=9)
     return gid

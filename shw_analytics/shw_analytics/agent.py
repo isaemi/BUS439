@@ -62,6 +62,11 @@ Rules:
   - If no service is specified, examine CHR across all services; describe the
     result as an aggregate, not a finding for every individual service.
   - If a metric is named, select it; otherwise check all four metrics.
+  - Volume and practitioner counts are compared after allowing for how busy the
+    term is overall (overall_level). When overall_level is notable, say first that
+    the term is running about that percent above or below earlier years throughout,
+    then name the weeks that stand out from that level. Do not describe a term that
+    is busier throughout as many unusual weeks.
   - Explain only flagged weeks, with the matched historical years. Rate alerts
     use Benjamini-Hochberg-adjusted tests and a minimum effect size. Count
     alerts are operational screening flags, NOT statistically significant tests.

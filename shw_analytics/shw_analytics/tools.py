@@ -747,6 +747,24 @@ def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
 
     flags = result["anomalies"]
     weekly = result["weekly"]
+
+    # The whole term for the chart (this year against the baseline each week was compared
+    # with), whatever the scope: one week on its own cannot be read as unusual or not.
+    weeks = list(range(1, int(result["complete_weeks"]) + 1))
+    start = pd.Timestamp(result["term_start"])
+    this_year = weekly.loc[weekly["year"] == int(year)].set_index("week")
+    base = result["baseline"]
+    series = {}
+    for m in ([metric] if metric else list(METRICS)):
+        b = base.loc[base["metric"] == m].set_index("week")["baseline"].reindex(weeks)
+        cur = this_year[m].reindex(weeks)
+        series[m] = {"this_year": [None if pd.isna(v) else round(float(v), 1) for v in cur],
+                     "baseline": [None if pd.isna(v) else round(float(v), 1) for v in b]}
+    levels = {m: v for m, v in result["overall_level"].items() if not metric or m == metric}
+    all_flags = flags if not metric else flags.loc[flags["metric"] == metric]
+    marked = [{"week": int(f.week), "metric": f.metric, "direction": f.direction,
+               "observed": float(f.observed), "baseline": float(f.historical_baseline)}
+              for f in all_flags.itertuples(index=False)]
     if scope == "latest_completed":
         selected_week = int(result["complete_weeks"])
         flags = flags.loc[flags["week"] == selected_week]
@@ -764,6 +782,12 @@ def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
     return {
         "anomalies": json.loads(flags.to_json(orient="records")),
         "weekly": json.loads(weekly.to_json(orient="records")),
+        "overall_level": levels,
+        "series": series,
+        "flagged_in_term": marked,
+        "weeks": weeks,
+        "week_starts": [str((start + pd.Timedelta(days=7 * (w - 1))).date()) for w in weeks],
+        "thresholds": result["thresholds"],
         "historical_years": result["historical_years"],
         "complete_weeks": result["complete_weeks"],
         "selected_week": selected_week,
@@ -932,7 +956,11 @@ TOOL_SPECS.append(_fn(
     "scope=all_weeks. Omit service_line for an all-services aggregate and omit metric "
     "to examine all four metrics. Weekly cancellation and no-show rate flags use "
     "Benjamini-Hochberg adjusted tests; volume and practitioner count flags are "
-    "operational screening alerts, NOT statistical significance tests.",
+    "operational screening alerts, NOT statistical significance tests. Volume and "
+    "practitioner counts are compared after allowing for how busy the term is overall "
+    "against earlier years: overall_level gives that level (percent_vs_earlier_years). "
+    "Report the overall level first when it is notable, then the weeks that stand out "
+    "from it; a term that is busier throughout is one finding, not many unusual weeks.",
     {"term": {"type": "string", "enum": ["Winter", "Summer", "Fall"],
               "description": "Optional academic term; omit with year for latest data."},
      "year": {"type": "integer", "description": "Optional; omit with term for latest data."},

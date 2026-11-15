@@ -21,6 +21,21 @@ import pandas as pd
 from scipy.stats import binomtest
 
 METRICS = ('appointment_volume', 'cancellation_rate', 'no_show_rate', 'active_practitioners')
+COUNT_METRICS = ('appointment_volume', 'active_practitioners')
+# Fewer complete weeks than this and the overall level cannot be told apart from the
+# weeks themselves, so the counts are compared with earlier years as they are.
+MIN_WEEKS_FOR_LEVEL = 4
+
+
+def overall_level(current, baseline, min_weeks=MIN_WEEKS_FOR_LEVEL):
+    """How this term runs against earlier years overall: the median of the weekly ratios
+    (this year's week / the same week in earlier years). A median, so a few unusual
+    weeks do not move it. None when there are too few comparable weeks to tell."""
+    ratios = [c / b for c, b in zip(current, baseline) if b and b > 0 and c is not None and not np.isnan(c)]
+    if len(ratios) < min_weeks:
+        return None
+    factor = float(np.median(ratios))
+    return factor if factor > 0 else None
 
 
 def _bh_adjust(p_values):
@@ -58,6 +73,8 @@ def detect_chr_anomalies(
     count_min_relative_change: float = 0.30,
     alpha: float = 0.05,
     historical_window: int = 1,
+    adjust_for_level: bool = True,
+    min_weeks_for_level: int = MIN_WEEKS_FOR_LEVEL,
 ) -> dict:
     """Detect anomalies by comparing weeks with the same term in earlier years.
 
@@ -72,6 +89,13 @@ def detect_chr_anomalies(
     median historical count for the matching week, and the current value must
     differ by >= 2 from that median. With only 1-2 previous years, this is a
     conservative operational heuristic rather than a calibrated prediction band.
+
+    A term that is busier (or quieter) than earlier years throughout is not a run of
+    unusual weeks. With adjust_for_level, each count metric's historical median is
+    first scaled by that metric's overall level this term (see overall_level), so a
+    week is flagged for standing out from the rest of this term's pattern. The level
+    itself is reported in 'overall_level'. Rates are not scaled: a rate does not grow
+    with demand. With fewer than min_weeks_for_level complete weeks no scaling is done.
 
     Returns weekly series for chart overlays, plus anomaly flags and reasons.
     """
@@ -139,6 +163,25 @@ def detect_chr_anomalies(
 
     history = weekly.loc[weekly['year'] < year]
     current = weekly.loc[weekly['year'] == year]
+
+    # Overall level of each count metric this term against earlier years.
+    weeks = list(range(1, complete_weeks + 1))
+    cur_by_week = current.set_index('week')
+    raw_median = {m: history.groupby('week')[m].median().reindex(weeks) for m in COUNT_METRICS}
+    levels = {}
+    for m in COUNT_METRICS:
+        factor = overall_level(cur_by_week[m].reindex(weeks).astype(float).tolist(),
+                               raw_median[m].tolist(), min_weeks_for_level) if adjust_for_level else None
+        levels[m] = {
+            'factor': round(factor, 3) if factor else None,
+            'applied': bool(factor),
+            'percent_vs_earlier_years': round(100 * (factor - 1), 1) if factor else None,
+            'notable': bool(factor and abs(factor - 1) >= count_min_relative_change),
+            'reason_not_applied': None if factor else (
+                'adjustment switched off' if not adjust_for_level else
+                f'fewer than {min_weeks_for_level} complete weeks to compare'),
+        }
+    baseline_rows = []
     flags = []
     rate_tests = []
     for row in current.itertuples(index=False):
@@ -155,13 +198,19 @@ def detect_chr_anomalies(
                 if n_hist < min_appointments or n_cur < min_appointments:
                     continue
                 baseline = 100 * k_hist / n_hist
+                unadjusted = baseline
+                baseline_rows.append({'week': int(row.week), 'metric': metric,
+                                      'baseline': round(baseline, 2), 'unadjusted_baseline': round(baseline, 2)})
                 difference = actual - baseline
                 p_value = float(binomtest(int(getattr(row, successes)), n_cur, baseline / 100).pvalue)
                 rate_tests.append((int(row.week), metric, p_value))
                 flagged = abs(difference) >= rate_min_pp
                 measure = 'percentage points'
             else:
-                baseline = float(same_week[metric].median())
+                unadjusted = float(same_week[metric].median())
+                baseline = unadjusted * (levels[metric]['factor'] or 1.0)
+                baseline_rows.append({'week': int(row.week), 'metric': metric,
+                                      'baseline': round(baseline, 2), 'unadjusted_baseline': round(unadjusted, 2)})
                 difference = actual - baseline
                 p_value = np.nan
                 # Protect against divide-by-zero; any count alert needs
@@ -175,10 +224,14 @@ def detect_chr_anomalies(
                     'service': service or 'All services', 'metric': metric,
                     'direction': 'spike' if difference > 0 else 'drop',
                     'observed': round(actual, 2), 'historical_baseline': round(baseline, 2),
+                    'unadjusted_baseline': round(unadjusted, 2),
+                    'level_factor': levels[metric]['factor'] if metric in COUNT_METRICS else None,
                     'difference': round(difference, 2), 'difference_unit': measure,
                     'p_value': p_value, 'current_appointments': int(row.appointment_volume),
                     'historical_years': ', '.join(map(str, historical_years)),
                     'method': ('binomial rate test + minimum effect' if metric.endswith('_rate')
+                               else 'historical median scaled to this term\'s overall level + minimum relative change (screening)'
+                               if levels[metric]['applied']
                                else 'historical median + minimum relative change (screening)'),
                 })
     # Correct ALL eligible rate tests, including weeks with small differences.
@@ -202,7 +255,8 @@ def detect_chr_anomalies(
     flags = corrected_flags
 
     columns = ['term', 'year', 'week', 'service', 'metric', 'direction', 'observed',
-               'historical_baseline', 'difference', 'difference_unit', 'p_value', 'q_value',
+               'historical_baseline', 'unadjusted_baseline', 'level_factor',
+               'difference', 'difference_unit', 'p_value', 'q_value',
                'current_appointments', 'historical_years', 'method']
     anomalies = pd.DataFrame(flags, columns=columns)
     if not anomalies.empty:
@@ -212,8 +266,18 @@ def detect_chr_anomalies(
         'anomalies': anomalies,
         'historical_years': historical_years,
         'complete_weeks': complete_weeks,
+        'baseline': pd.DataFrame(baseline_rows, columns=['week', 'metric', 'baseline', 'unadjusted_baseline']),
+        'overall_level': levels,
+        'term_start': str(term_start.date()),
+        'thresholds': {'count_min_relative_change': count_min_relative_change, 'rate_min_pp': rate_min_pp,
+                       'historical_window': historical_window},
         'note': (f'Rate alerts require a difference of at least {rate_min_pp} percentage points and '
                  f'Benjamini-Hochberg adjusted q < {alpha} across all eligible weekly rate tests. '
                  'Count alerts are operational screening flags, not statistical significance tests. '
+                 + ('Counts are compared after allowing for how busy this term is overall against earlier '
+                    'years (see overall_level), so a term that is busier throughout is not flagged week after week. '
+                    if any(v['applied'] for v in levels.values()) else
+                    'Counts are compared with earlier years as they are; the overall level of this term was not allowed for. ')
+                 +
                  'Historical baselines are estimates; confirm flagged periods before taking action.'),
     }

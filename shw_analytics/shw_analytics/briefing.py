@@ -211,6 +211,56 @@ def _from_equity(step):
     return out, []
 
 
+def _from_survey_change(step):
+    """Groups and questions whose survey ratings moved between the two windows."""
+    _, args, r = step
+    from .figures import _who
+    span = _span(r["periods"])
+    found, same = [], []
+    for g in r.get("groups_that_changed", [])[:MAX_PER_KIND]:
+        svc = SURVEY_SERVICES.get(g["service"], str(g["service"]).title())
+        who, down = _who(g["dimension"], g["group"]), g["change_pts"] < 0
+        other = ""
+        if "everyone_else_change_pts" in g:
+            other = (f" Other students' ratings moved {g['everyone_else_change_pts']:+g} points over the same dates, so "
+                     + ("this group moved differently from everyone else." if g.get("differs_from_everyone_else")
+                        else "this may be part of a wider shift."))
+        found.append({
+            "id": f"survey_change|{g['service']}|{g['dimension']}:{g['group']}", "kind": "survey_change", "service": svc,
+            "headline": f"{who} rate {svc.lower()} {abs(g['change_pts']):g} points {'lower' if down else 'higher'} than a year ago",
+            "detail": f"Average agreement {g['pct_agree_before']:g}% then {g['pct_agree_after']:g}% "
+                      f"({g['respondents_before']} then {g['respondents_after']} students; {span}); plausible range of the "
+                      f"change {g['ci_pts'][0]:g} to {g['ci_pts'][1]:g} points.{other} The survey is anonymous, so these are "
+                      "different students in each window.",
+            "figures": {"before_pct": g["pct_agree_before"], "after_pct": g["pct_agree_after"], "change_pts": g["change_pts"],
+                        "range_pts": g["ci_pts"], "students_before": g["respondents_before"],
+                        "students_after": g["respondents_after"], "everyone_else_change_pts": g.get("everyone_else_change_pts")},
+            "tested": f"One of {r.get('groups_checked', 'many')} groups checked, corrected for checking them all.",
+            "strength": min(1.0, abs(g["change_pts"]) / 22), "p": g.get("q"), "step": step, "pick": 0,
+            "next": f"What are students saying about {svc.lower()} in their comments?"})
+    for q in r.get("questions_that_changed", [])[:MAX_PER_KIND]:
+        svc = SURVEY_SERVICES.get(q["service"], str(q["service"]).title())
+        down = q["change_pts"] < 0
+        found.append({
+            "id": f"survey_change|{q['service']}|{q['item_code']}", "kind": "survey_change", "service": svc,
+            "headline": f"{svc}: “{q['item']}” is {abs(q['change_pts']):g} points {'lower' if down else 'higher'} than a year ago",
+            "detail": f"{q['pct_agree_before']:g}% of {q['students_before']} students agreed, then "
+                      f"{q['pct_agree_after']:g}% of {q['students_after']} ({span}). Different students answered in each window.",
+            "figures": {"before_pct": q["pct_agree_before"], "after_pct": q["pct_agree_after"], "change_pts": q["change_pts"],
+                        "students_before": q["students_before"], "students_after": q["students_after"]},
+            "tested": f"One of {r.get('questions_checked', 'many')} questions checked, corrected for checking them all.",
+            "strength": min(1.0, abs(q["change_pts"]) / 30), "p": q.get("q"), "step": step, "pick": 0,
+            "next": f"Which parts of {svc.lower()} are most closely linked to overall satisfaction?"})
+    for s in r.get("services", []):
+        if s["verdict"] == "no clear change":
+            name = SURVEY_SERVICES.get(s["service"], str(s["service"]).title())
+            same.append(f"Survey ratings ({name}): no clear change overall ({s['pct_agree_before']:g}% then {s['pct_agree_after']:g}%).")
+    if not r.get("groups_that_changed") and r.get("smallest_group_change_detectable_pts"):
+        same.append("Survey ratings by student group: no group moved clearly. With this many responses, a group's rating "
+                    f"would need to move about {r['smallest_group_change_detectable_pts']:g} points to be detected.")
+    return found, same
+
+
 # ---- the briefing ---------------------------------------------------------------------
 
 def _build():
@@ -279,7 +329,14 @@ def _run_battery():
             findings += f
             same += s
             tests += step[2].get("comparisons_run", 0)
-        missing.append("Whether survey ratings changed: the survey covers one period so far.")
+        step = _call("survey_changed")
+        if "error" in step[2]:
+            missing.append("Whether survey ratings changed: the survey does not yet cover the same dates a year earlier.")
+        else:
+            f, s = _from_survey_change(step)
+            findings += f
+            same += s
+            tests += step[2].get("tests_run", 0)
     else:
         missing.append("Survey: no survey responses are loaded.")
     labelled = con.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='comment_labels'").fetchone()[0]

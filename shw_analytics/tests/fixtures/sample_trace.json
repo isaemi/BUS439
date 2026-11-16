@@ -1,1 +1,1682 @@
-[["what_changed",{"metric":"visits_per_student","dimension":"academic_level","service_line":"Counselling"},{"metric":"visits_per_student","measure":"Attended visits per student seen","dimension":"academic_level","service_line":"counselling","periods":{"before":"2025-09-01 to 2025-10-31","after":"2026-09-01 to 2026-10-31"},"n":{"before":220,"after":281,"unit":"students"},"volume_in_same_windows":{"before":{"booked":468,"attended":408,"students_seen":220},"after":{"booked":593,"attended":507,"students_seen":281}},"volume_change":{"measure":"Students seen","before":220,"after":281,"change_pct":27.7,"ci_pct":[7.1,52.4],"p":0.0073,"verdict":"increase"},"overall":{"before":1.85,"after":1.8,"change":-0.05,"ci":[-0.22,0.13]},"mix_effect":{"estimate":0.0,"ci":[-0.01,0.02]},"within_group_effect":{"estimate":-0.05,"ci":[-0.22,0.12]},"verdict":"no_clear_change","explanation":"No clear change: neither part is distinguishable from noise. Do not call either part a driver, cause or main reason; at most say which part most of a small difference falls in, and that it is within noise.","groups":[{"group":"Undergraduate","n_before":183,"n_after":221,"share_before_pct":83.2,"share_after_pct":78.6,"before":1.89,"after":1.73,"mix_contribution":-0.08,"within_group_contribution":-0.13,"within_group_ci":[-0.27,0.03]},{"group":"Graduate","n_before":37,"n_after":60,"share_before_pct":16.8,"share_after_pct":21.4,"before":1.7,"after":2.08,"mix_contribution":0.09,"within_group_contribution":0.07,"within_group_ci":[-0.01,0.13]}],"excluded_unknown":0,"pooled_into_other":[],"data_source":"CHR appointments (SYNTHETIC test data, not real)"}],["what_changed",{"metric":"no_show_rate","dimension":"faculty","service_line":"Counselling"},{"metric":"no_show_rate","measure":"No-show rate (% of booked appointments)","dimension":"faculty","service_line":"counselling","periods":{"before":"2025-09-01 to 2025-10-31","after":"2026-09-01 to 2026-10-31"},"n":{"before":468,"after":593,"unit":"appointments"},"volume_in_same_windows":{"before":{"booked":468,"attended":408,"students_seen":220},"after":{"booked":593,"attended":507,"students_seen":281}},"volume_change":{"measure":"Students seen","before":220,"after":281,"change_pct":27.7,"ci_pct":[7.1,52.4],"p":0.0073,"verdict":"increase"},"overall":{"before":6.84,"after":7.59,"change":0.75,"ci":[-2.48,3.77]},"mix_effect":{"estimate":0.11,"ci":[-0.63,1.26]},"within_group_effect":{"estimate":0.64,"ci":[-2.55,3.86]},"verdict":"no_clear_change","explanation":"No clear change: neither part is distinguishable from noise. Do not call either part a driver, cause or main reason; at most say which part most of a small difference falls in, and that it is within noise.","groups":[{"group":"Arts","n_before":110,"n_after":140,"share_before_pct":23.5,"share_after_pct":23.6,"before":8.18,"after":2.86,"mix_contribution":0.01,"within_group_contribution":-1.25,"within_group_ci":[-2.8,0.23]},{"group":"Forestry","n_before":8,"n_after":21,"share_before_pct":1.7,"share_after_pct":3.5,"before":0.0,"after":19.05,"mix_contribution":0.17,"within_group_contribution":0.5,"within_group_ci":[0.0,0.97]},{"group":"Education","n_before":21,"n_after":37,"share_before_pct":4.5,"share_after_pct":6.2,"before":0.0,"after":8.11,"mix_contribution":0.07,"within_group_contribution":0.43,"within_group_ci":[0.0,1.02]},{"group":"Business","n_before":43,"n_after":28,"share_before_pct":9.2,"share_after_pct":4.7,"before":4.65,"after":10.71,"mix_contribution":-0.34,"within_group_contribution":0.42,"within_group_ci":[-0.42,1.3]},{"group":"Kinesiology","n_before":28,"n_after":27,"share_before_pct":6.0,"share_after_pct":4.6,"before":0.0,"after":7.41,"mix_contribution":-0.05,"within_group_contribution":0.39,"within_group_ci":[0.0,1.27]},{"group":"Graduate and Postdoctoral Studies","n_before":30,"n_after":40,"share_before_pct":6.4,"share_after_pct":6.7,"before":3.33,"after":7.5,"mix_contribution":0.02,"within_group_contribution":0.27,"within_group_ci":[-0.34,0.96]},{"group":"Other","n_before":1,"n_after":20,"share_before_pct":0.2,"share_after_pct":3.4,"before":0.0,"after":15.0,"mix_contribution":0.24,"within_group_contribution":0.27,"within_group_ci":[0.0,0.53]},{"group":"Law","n_before":20,"n_after":37,"share_before_pct":4.3,"share_after_pct":6.2,"before":10.0,"after":5.41,"mix_contribution":0.15,"within_group_contribution":-0.24,"within_group_ci":[-1.36,0.42]},{"group":"UBC Vantage College","n_before":16,"n_after":15,"share_before_pct":3.4,"share_after_pct":2.5,"before":12.5,"after":6.67,"mix_contribution":-0.09,"within_group_contribution":-0.17,"within_group_ci":[-0.8,0.3]},{"group":"Land and Food Systems","n_before":20,"n_after":25,"share_before_pct":4.3,"share_after_pct":4.2,"before":5.0,"after":8.0,"mix_contribution":-0.0,"within_group_contribution":0.13,"within_group_ci":[-0.44,0.76]},{"group":"Medicine","n_before":19,"n_after":26,"share_before_pct":4.1,"share_after_pct":4.4,"before":5.26,"after":3.85,"mix_contribution":0.01,"within_group_contribution":-0.06,"within_group_ci":[-0.58,0.46]},{"group":"Applied Science (Engineering)","n_before":60,"n_after":48,"share_before_pct":12.8,"share_after_pct":8.1,"before":6.67,"after":6.25,"mix_contribution":-0.31,"within_group_contribution":-0.04,"within_group_ci":[-0.98,0.92]},{"group":"Science","n_before":92,"n_after":129,"share_before_pct":19.7,"share_after_pct":21.8,"before":10.87,"after":10.85,"mix_contribution":0.23,"within_group_contribution":-0.0,"within_group_ci":[-2.11,1.78]}],"excluded_unknown":0,"pooled_into_other":["Music","Pharmaceutical Sciences"],"data_source":"CHR appointments (SYNTHETIC test data, not real)"}],["noshow_patterns",{"service_line":"Counselling"},{"service_line":"counselling","term":"all","period":"2025-09-01 to 2026-10-31","appointments":4088,"students":1267,"overall_no_show_pct":7.3,"flags":[{"factor":"Appointment format","group":"In Person","appointments":2467,"students":1099,"no_show_pct":5.2,"gap_vs_others_pts":-5.3,"ci_pts":[-7.0,-3.5],"q":0.0},{"factor":"Appointment format","group":"Phone/Video","appointments":1621,"students":913,"no_show_pct":10.5,"gap_vs_others_pts":5.3,"ci_pts":[3.5,7.0],"q":0.0}],"tests_run":42,"all_groups":[{"factor":"Appointment format","group":"In Person","appointments":2467,"students":1099,"no_show_pct":5.2,"gap_vs_others_pts":-5.3,"ci_pts":[-7.0,-3.5],"q":0.0},{"factor":"Appointment format","group":"Phone/Video","appointments":1621,"students":913,"no_show_pct":10.5,"gap_vs_others_pts":5.3,"ci_pts":[3.5,7.0],"q":0.0}],"data_source":"CHR appointments (SYNTHETIC test data, not real)"}],["care_journeys",{"service_line":"Counselling","dimension":"academic_level"},{"service_line":"counselling","period":"2025-09-01 to 2026-10-31","episodes_start_between":"2025-11-30 and 2026-09-01","students":619,"single_visit_pct":17.9,"returned_within_30_days_pct":78.2,"median_days_to_second_visit":14.0,"missed_then_came_back":{"students_with_a_missed_appointment":225,"attended_within_60_days_pct":66.7},"dimension":"academic_level","groups":[{"group":"Graduate","students":113,"single_visit_pct":3.5,"single_visit_gap_pts":-17.6,"returned_quickly_pct":82.3,"returned_quickly_gap_pts":5.0,"single_visit_q":0.0,"returned_quickly_q":0.2419},{"group":"Undergraduate","students":506,"single_visit_pct":21.1,"single_visit_gap_pts":17.6,"returned_quickly_pct":77.3,"returned_quickly_gap_pts":-5.0,"single_visit_q":0.0,"returned_quickly_q":0.2419}],"flags":[{"group":"Graduate","measure":"single_visit","group_pct":3.5,"gap_vs_others_pts":-17.6,"q":0.0,"students":113},{"group":"Undergraduate","measure":"single_visit","group_pct":21.1,"gap_vs_others_pts":17.6,"q":0.0,"students":506}],"tests_run":4,"excluded_unknown":0,"data_source":"CHR appointments (SYNTHETIC test data, not real)"}],["priority_items",{"service":"counselling"},{"service":"counselling","outcome":"overall satisfaction with the support received","respondents":267,"verdict":"clear_priorities","priorities":["My counsellor and I focused on the issues most important to me","My counsellor helped me understand my situation in more effective ways"],"items":[{"item":"My counsellor and I focused on the issues most important to me","item_code":"CS1_6","link_to_outcome":0.77,"link_ci":[0.71,0.82],"agree_pct":22.4,"students":259,"quadrant":"fix_first","fix_first_in_pct_of_resamples":100,"access_item":false},{"item":"My counsellor helped me understand my situation in more effective ways","item_code":"CS1_7","link_to_outcome":0.63,"link_ci":[0.56,0.71],"agree_pct":45.7,"students":256,"quadrant":"fix_first","fix_first_in_pct_of_resamples":95,"access_item":false},{"item":"I have made positive changes in the areas that concerned me","item_code":"CS1_8","link_to_outcome":0.47,"link_ci":[0.37,0.56],"agree_pct":52.3,"students":256,"quadrant":"keep_up","fix_first_in_pct_of_resamples":4,"access_item":false},{"item":"The length of my session was right for me","item_code":"CS1_10","link_to_outcome":0.41,"link_ci":[0.3,0.51],"agree_pct":66.9,"students":260,"quadrant":"keep_up","fix_first_in_pct_of_resamples":0,"access_item":false},{"item":"I was informed about other campus resources","item_code":"CS1_9","link_to_outcome":0.24,"link_ci":[0.14,0.35],"agree_pct":36.6,"students":262,"quadrant":"monitor","fix_first_in_pct_of_resamples":0,"access_item":false},{"item":"I could book an appointment easily","item_code":"CS1_1","link_to_outcome":0.13,"link_ci":[-0.0,0.26],"agree_pct":25.4,"students":252,"quadrant":"monitor","fix_first_in_pct_of_resamples":0,"access_item":true},{"item":"I felt welcomed and included in the space","item_code":"CS1_3","link_to_outcome":0.4,"link_ci":[0.29,0.5],"agree_pct":63.4,"students":257,"quadrant":"possibly_over_served","fix_first_in_pct_of_resamples":0,"access_item":false},{"item":"Front desk staff were courteous and respectful","item_code":"CS1_2","link_to_outcome":0.08,"link_ci":[-0.04,0.22],"agree_pct":82.4,"students":261,"quadrant":"possibly_over_served","fix_first_in_pct_of_resamples":0,"access_item":false}],"link_spread":0.69}],["explain_difference",{"dimension":"academic_level","group":"Graduate","compare_to":"Undergraduate","service_line":"Counselling"},{"group":"academic_level = Graduate","comparison":"Undergraduate","service_line":"counselling","term":"all terms","decomposition":{"students":{"group":229,"comparison":996,"ratio":0.23},"visits_per_student":{"group":4.45,"comparison":2.5,"ratio":1.78},"total_visits":{"group":1018,"comparison":2490,"ratio":0.41},"summary":"Graduate: 229 students vs 996 for Undergraduate, each attending 4.4 visits vs 2.5 (1.8x), so total visits are 1,018 vs 2,490."},"findings":["Visits per student is 1.8x higher for academic_level = Graduate (4.45 vs 2.5, p < 0.001)","Days in care (first to last visit) is 3.1x higher for academic_level = Graduate (65.48 vs 21.21, p < 0.001)"],"measures":[{"measure":"Visits per student","group":4.45,"comparison":2.5,"ratio":1.78,"p":0.0,"significant":true},{"measure":"Days in care (first to last visit)","group":65.48,"comparison":21.21,"ratio":3.09,"p":0.0,"significant":true},{"measure":"Services used per student","group":1.0,"comparison":1.0,"ratio":1.0,"p":null,"significant":false},{"measure":"No-show rate (%)","group":7.2,"comparison":7.4,"ratio":0.98,"p":0.8398,"significant":false}],"data_source":"CHR appointments (SYNTHETIC test data, not real)"}],["equity_flags",{},{"comparisons_run":42,"flags":[{"service":"counselling","dimension":"disability_any","group":"yes","n_group":61,"pct_agree_group":41.3,"pct_agree_rest":52.0,"gap_pts":-10.7,"q":0.002},{"service":"counselling","dimension":"disability_any","group":"no","n_group":217,"pct_agree_group":52.0,"pct_agree_rest":41.3,"gap_pts":10.7,"q":0.002}],"groups_too_small_to_compare":21}],["group_vs_everyone",{"dimension":"disability_any","value":"yes"},{"group":"disability_any = yes","overall":{"n_group":176,"n_everyone":700,"pct_agree_group":50.9,"pct_agree_everyone":54.0,"mean_group":3.46,"mean_everyone":3.57,"p":0.0179,"significant":true},"by_service":[{"service":"counselling","n_group":61,"pct_agree_group":41.3,"pct_agree_everyone":49.6,"gap_pts":-8.3,"mean_group":3.24,"mean_everyone":3.48,"p":0.0001,"q":0.0002,"significant":true},{"service":"medical","n_group":73,"pct_agree_group":56.0,"pct_agree_everyone":55.7,"gap_pts":0.3,"mean_group":3.59,"mean_everyone":3.6,"p":0.7317,"q":0.8622,"significant":false},{"service":"wellness_adv","n_group":40,"pct_agree_group":63.6,"pct_agree_everyone":63.5,"gap_pts":0.1,"mean_group":3.75,"mean_everyone":3.77,"p":0.8622,"q":0.8622,"significant":false}]}],["chr_trend",{"service_line":"Counselling","freq":"month"},{"rows":[{"period":"2025-09","appointments":126,"n_students":92,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2025-10","appointments":282,"n_students":190,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2025-11","appointments":359,"n_students":244,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2025-12","appointments":323,"n_students":209,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-01","appointments":314,"n_students":208,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-02","appointments":260,"n_students":193,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-03","appointments":398,"n_students":268,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-04","appointments":354,"n_students":232,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-05","appointments":224,"n_students":148,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-06","appointments":144,"n_students":94,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-07","appointments":104,"n_students":67,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-08","appointments":113,"n_students":78,"same_month_last_year":null,"change_pct":null,"p":null,"notable_change":false},{"period":"2026-09","appointments":163,"n_students":121,"same_month_last_year":126.0,"change_pct":29.4,"p":0.0295,"notable_change":true},{"period":"2026-10","appointments":344,"n_students":235,"same_month_last_year":282.0,"change_pct":22.0,"p":0.0132,"notable_change":true}],"row_count":14,"data_source":"CHR appointments (SYNTHETIC test data, not real)","note":"notable_change = at least 10% different from the same month last year and unlikely to be chance (p < 0.05)."}],["chr_trend",{"service_line":"Counselling","freq":"term"},{"rows":[{"period":"2025 Fall","appointments":1090,"n_students":434},{"period":"2026 Fall","appointments":507,"n_students":281},{"period":"2026 Summer","appointments":585,"n_students":249},{"period":"2026 Winter","appointments":1326,"n_students":533}],"row_count":4,"data_source":"CHR appointments (SYNTHETIC test data, not real)","note":"notable_change = at least 10% different from the same month last year and unlikely to be chance (p < 0.05).","warning":"PARTIAL TERM: 2026 Fall has data only from 2026-09-01 to 2026-10-31. Do not compare it with a complete term: totals, visits and days in care will look lower only because less time is covered. For change between periods use what_changed, which compares matching date windows."}],["chr_summary",{"service_line":"Counselling","dimension":"faculty"},{"rows":[{"faculty":"Applied Science (Engineering)","n_students":144,"appointments_booked":456,"appointments_attended":392,"visits_per_student":2.72,"median_days_in_care":21.0,"no_show_rate_pct":6.1},{"faculty":"Arts","n_students":267,"appointments_booked":885,"appointments_attended":765,"visits_per_student":2.87,"median_days_in_care":23.0,"no_show_rate_pct":7.2},{"faculty":"Business","n_students":99,"appointments_booked":344,"appointments_attended":293,"visits_per_student":2.96,"median_days_in_care":22.0,"no_show_rate_pct":6.7},{"faculty":"Education","n_students":53,"appointments_booked":165,"appointments_attended":137,"visits_per_student":2.58,"median_days_in_care":15.0,"no_show_rate_pct":7.9},{"faculty":"Forestry","n_students":36,"appointments_booked":116,"appointments_attended":94,"visits_per_student":2.61,"median_days_in_care":12.5,"no_show_rate_pct":8.6},{"faculty":"Graduate and Postdoctoral Studies","n_students":79,"appointments_booked":426,"appointments_attended":365,"visits_per_student":4.62,"median_days_in_care":67.0,"no_show_rate_pct":8.5},{"faculty":"Kinesiology","n_students":63,"appointments_booked":206,"appointments_attended":181,"visits_per_student":2.87,"median_days_in_care":23.0,"no_show_rate_pct":5.3},{"faculty":"Land and Food Systems","n_students":51,"appointments_booked":156,"appointments_attended":134,"visits_per_student":2.63,"median_days_in_care":24.0,"no_show_rate_pct":7.7},{"faculty":"Law","n_students":43,"appointments_booked":143,"appointments_attended":125,"visits_per_student":2.91,"median_days_in_care":23.0,"no_show_rate_pct":4.9},{"faculty":"Medicine","n_students":68,"appointments_booked":189,"appointments_attended":168,"visits_per_student":2.47,"median_days_in_care":15.0,"no_show_rate_pct":5.8},{"faculty":"Music","n_students":16,"appointments_booked":45,"appointments_attended":42,"visits_per_student":2.62,"median_days_in_care":12.5,"no_show_rate_pct":6.7},{"faculty":"Pharmaceutical Sciences","n_students":17,"appointments_booked":52,"appointments_attended":44,"visits_per_student":2.59,"median_days_in_care":13.0,"no_show_rate_pct":7.7},{"faculty":"Science","n_students":252,"appointments_booked":802,"appointments_attended":679,"visits_per_student":2.69,"median_days_in_care":16.0,"no_show_rate_pct":8.6},{"faculty":"UBC Vantage College","n_students":37,"appointments_booked":103,"appointments_attended":89,"visits_per_student":2.41,"median_days_in_care":16.0,"no_show_rate_pct":7.8}],"row_count":14,"data_source":"CHR appointments (SYNTHETIC test data, not real)"}],["item_summary",{"service":"counselling"},{"rows":[{"item_code":"CS1_6","item_text":"My counsellor and I focused on the issues most important to me","n":270,"mean_score":2.78,"pct_agree":22.6},{"item_code":"CS1_1","item_text":"I could book an appointment easily","n":263,"mean_score":2.94,"pct_agree":25.1},{"item_code":"CS1_9","item_text":"I was informed about other campus resources","n":272,"mean_score":3.24,"pct_agree":36.8},{"item_code":"CS1_7","item_text":"My counsellor helped me understand my situation in more effective ways","n":267,"mean_score":3.34,"pct_agree":45.3},{"item_code":"CS1_11","item_text":"Overall, I am satisfied with the support I received","n":267,"mean_score":3.39,"pct_agree":45.3},{"item_code":"CS1_4","item_text":"I would recommend UBC Student Health and Wellbeing to a friend","n":267,"mean_score":3.55,"pct_agree":51.3},{"item_code":"CS1_5","item_text":"I would recommend the Wellness Info Desk to anyone who needs help finding health and wellness resources on campus","n":264,"mean_score":3.49,"pct_agree":52.3},{"item_code":"CS1_8","item_text":"I have made positive changes in the areas that concerned me","n":267,"mean_score":3.58,"pct_agree":52.4},{"item_code":"CS1_3","item_text":"I felt welcomed and included in the space","n":268,"mean_score":3.76,"pct_agree":63.4},{"item_code":"CS1_10","item_text":"The length of my session was right for me","n":269,"mean_score":3.91,"pct_agree":67.7},{"item_code":"CS1_2","item_text":"Front desk staff were courteous and respectful","n":272,"mean_score":4.28,"pct_agree":82.7}],"row_count":11,"note":"Sorted lowest % agree first."}],["compare_groups",{"dimension":"academic_level","service":"counselling"},{"rows":[{"academic_level":"1","n":191,"mean_score":3.49,"pct_agree":50.7},{"academic_level":"2","n":49,"mean_score":3.48,"pct_agree":48.0},{"academic_level":"3","n":38,"mean_score":3.43,"pct_agree":46.4}],"row_count":3,"note":"Descriptive only (not a significance test).","everyone":{"n":278,"pct_agree":49.6,"mean_score":3.48}}],["service_summary",{},{"rows":[{"service":"counselling","n":278,"mean_score":3.48,"pct_agree":49.6},{"service":"medical","n":264,"mean_score":3.59,"pct_agree":55.6},{"service":"wellness_adv","n":146,"mean_score":3.77,"pct_agree":63.5},{"service":"info_desk","n":12,"mean_score":3.83,"pct_agree":70.8}],"row_count":4}],["wait_time_vs_rating",{"service":"medical"},{"rows":[{"wait":"1","n":95,"mean_score":3.63,"pct_agree":57.5},{"wait":"2","n":77,"mean_score":3.65,"pct_agree":57.9},{"wait":"3","n":58,"mean_score":3.61,"pct_agree":55.8},{"wait":"4","n":34,"mean_score":3.33,"pct_agree":44.6}],"row_count":4,"correlation":{"spearman_rho":-0.118,"p_value":0.0562,"n":264},"interpretation":"Longer waits go with slightly lower ratings (rho = -0.118), but this is NOT statistically significant (p = 0.0562), so there is no clear relationship.","note":"Wait codes are ordered shortest to longest (assumed until labels are loaded)."}],["survey_vs_visits",{"dimension":"faculty"},{"rows":[{"faculty":"Applied Science (Engineering)","n_respondents":49,"n_students_seen":275.0,"pct_of_survey":6.7,"pct_of_visitors":11.6,"representation_ratio":0.58},{"faculty":"Law","n_respondents":16,"n_students_seen":79.0,"pct_of_survey":2.2,"pct_of_visitors":3.3,"representation_ratio":0.67},{"faculty":"UBC Vantage College","n_respondents":15,"n_students_seen":71.0,"pct_of_survey":2.0,"pct_of_visitors":3.0,"representation_ratio":0.67},{"faculty":"Medicine","n_respondents":30,"n_students_seen":141.0,"pct_of_survey":4.1,"pct_of_visitors":6.0,"representation_ratio":0.68},{"faculty":"Pharmaceutical Sciences","n_respondents":11,"n_students_seen":45.0,"pct_of_survey":1.5,"pct_of_visitors":1.9,"representation_ratio":0.79},{"faculty":"Science","n_respondents":127,"n_students_seen":475.0,"pct_of_survey":17.3,"pct_of_visitors":20.1,"representation_ratio":0.86},{"faculty":"Music","n_respondents":10,"n_students_seen":37.0,"pct_of_survey":1.4,"pct_of_visitors":1.6,"representation_ratio":0.87},{"faculty":"Land and Food Systems","n_respondents":24,"n_students_seen":88.0,"pct_of_survey":3.3,"pct_of_visitors":3.7,"representation_ratio":0.89},{"faculty":"Business","n_respondents":57,"n_students_seen":205.0,"pct_of_survey":7.8,"pct_of_visitors":8.7,"representation_ratio":0.9},{"faculty":"Forestry","n_respondents":21,"n_students_seen":75.0,"pct_of_survey":2.9,"pct_of_visitors":3.2,"representation_ratio":0.91},{"faculty":"Education","n_respondents":33,"n_students_seen":109.0,"pct_of_survey":4.5,"pct_of_visitors":4.6,"representation_ratio":0.98},{"faculty":"Graduate and Postdoctoral Studies","n_respondents":45,"n_students_seen":140.0,"pct_of_survey":6.1,"pct_of_visitors":5.9,"representation_ratio":1.03},{"faculty":"Arts","n_respondents":177,"n_students_seen":516.0,"pct_of_survey":24.1,"pct_of_visitors":21.9,"representation_ratio":1.1},{"faculty":"Kinesiology","n_respondents":36,"n_students_seen":105.0,"pct_of_survey":4.9,"pct_of_visitors":4.4,"representation_ratio":1.11},{"faculty":"Applied Science (Nursing)","n_respondents":14,"n_students_seen":0.0,"pct_of_survey":1.9,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Architecture and Landscape Architecture","n_respondents":5,"n_students_seen":0.0,"pct_of_survey":0.7,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Audiology and Speech Sciences","n_respondents":6,"n_students_seen":0.0,"pct_of_survey":0.8,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Dentistry","n_respondents":5,"n_students_seen":0.0,"pct_of_survey":0.7,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Information (School of)","n_respondents":6,"n_students_seen":0.0,"pct_of_survey":0.8,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Journalism, Writing, and Media","n_respondents":10,"n_students_seen":0.0,"pct_of_survey":1.4,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Other","n_respondents":5,"n_students_seen":0.0,"pct_of_survey":0.7,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Population and Public Health","n_respondents":10,"n_students_seen":0.0,"pct_of_survey":1.4,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Public Policy and Global Affairs","n_respondents":9,"n_students_seen":0.0,"pct_of_survey":1.2,"pct_of_visitors":0.0,"representation_ratio":null},{"faculty":"Social Work","n_respondents":5,"n_students_seen":0.0,"pct_of_survey":0.7,"pct_of_visitors":0.0,"representation_ratio":null}],"row_count":24,"data_source":"survey respondents vs CHR appointments (SYNTHETIC test data, not real)","note":"representation_ratio below 1 = this group is under-represented in survey responses compared with who actually visits."}],["service_pathways",{},{"within_days":30,"period":"2025-09-01 to 2026-10-31","data_source":"SYNTHETIC","pathways":[{"from":"Medical","to":"Counselling","students_starting":656,"went_on_within_days":153,"pct":23.3,"ci_pct":[20.2,26.7]},{"from":"Counselling","to":"Medical","students_starting":786,"went_on_within_days":130,"pct":16.5,"ci_pct":[14.1,19.3]},{"from":"Medical","to":"Wellness Advising","students_starting":656,"went_on_within_days":10,"pct":1.5,"ci_pct":[0.8,2.8]}]}]]
+[
+ [
+  "what_changed",
+  {
+   "metric": "visits_per_student",
+   "dimension": "academic_level",
+   "service_line": "Counselling"
+  },
+  {
+   "metric": "visits_per_student",
+   "measure": "Attended visits per student seen",
+   "dimension": "academic_level",
+   "service_line": "counselling",
+   "periods": {
+    "before": "2025-09-01 to 2025-10-31",
+    "after": "2026-09-01 to 2026-10-31"
+   },
+   "n": {
+    "before": 220,
+    "after": 281,
+    "unit": "students"
+   },
+   "volume_in_same_windows": {
+    "before": {
+     "booked": 468,
+     "attended": 408,
+     "students_seen": 220
+    },
+    "after": {
+     "booked": 593,
+     "attended": 507,
+     "students_seen": 281
+    }
+   },
+   "volume_change": {
+    "measure": "Students seen",
+    "before": 220,
+    "after": 281,
+    "change_pct": 27.7,
+    "ci_pct": [
+     7.1,
+     52.4
+    ],
+    "p": 0.0073,
+    "verdict": "increase"
+   },
+   "overall": {
+    "before": 1.85,
+    "after": 1.8,
+    "change": -0.05,
+    "ci": [
+     -0.22,
+     0.13
+    ]
+   },
+   "mix_effect": {
+    "estimate": 0.0,
+    "ci": [
+     -0.01,
+     0.02
+    ]
+   },
+   "within_group_effect": {
+    "estimate": -0.05,
+    "ci": [
+     -0.22,
+     0.12
+    ]
+   },
+   "verdict": "no_clear_change",
+   "explanation": "No clear change: neither part is distinguishable from noise. Do not call either part a driver, cause or main reason; at most say which part most of a small difference falls in, and that it is within noise.",
+   "groups": [
+    {
+     "group": "Undergraduate",
+     "n_before": 183,
+     "n_after": 221,
+     "share_before_pct": 83.2,
+     "share_after_pct": 78.6,
+     "before": 1.89,
+     "after": 1.73,
+     "mix_contribution": -0.08,
+     "within_group_contribution": -0.13,
+     "within_group_ci": [
+      -0.27,
+      0.03
+     ]
+    },
+    {
+     "group": "Graduate",
+     "n_before": 37,
+     "n_after": 60,
+     "share_before_pct": 16.8,
+     "share_after_pct": 21.4,
+     "before": 1.7,
+     "after": 2.08,
+     "mix_contribution": 0.09,
+     "within_group_contribution": 0.07,
+     "within_group_ci": [
+      -0.01,
+      0.13
+     ]
+    }
+   ],
+   "excluded_unknown": 0,
+   "pooled_into_other": [],
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)"
+  }
+ ],
+ [
+  "what_changed",
+  {
+   "metric": "no_show_rate",
+   "dimension": "faculty",
+   "service_line": "Counselling"
+  },
+  {
+   "metric": "no_show_rate",
+   "measure": "No-show rate (% of booked appointments)",
+   "dimension": "faculty",
+   "service_line": "counselling",
+   "periods": {
+    "before": "2025-09-01 to 2025-10-31",
+    "after": "2026-09-01 to 2026-10-31"
+   },
+   "n": {
+    "before": 468,
+    "after": 593,
+    "unit": "appointments"
+   },
+   "volume_in_same_windows": {
+    "before": {
+     "booked": 468,
+     "attended": 408,
+     "students_seen": 220
+    },
+    "after": {
+     "booked": 593,
+     "attended": 507,
+     "students_seen": 281
+    }
+   },
+   "volume_change": {
+    "measure": "Students seen",
+    "before": 220,
+    "after": 281,
+    "change_pct": 27.7,
+    "ci_pct": [
+     7.1,
+     52.4
+    ],
+    "p": 0.0073,
+    "verdict": "increase"
+   },
+   "overall": {
+    "before": 6.84,
+    "after": 7.59,
+    "change": 0.75,
+    "ci": [
+     -2.48,
+     3.77
+    ]
+   },
+   "mix_effect": {
+    "estimate": 0.11,
+    "ci": [
+     -0.63,
+     1.26
+    ]
+   },
+   "within_group_effect": {
+    "estimate": 0.64,
+    "ci": [
+     -2.55,
+     3.86
+    ]
+   },
+   "verdict": "no_clear_change",
+   "explanation": "No clear change: neither part is distinguishable from noise. Do not call either part a driver, cause or main reason; at most say which part most of a small difference falls in, and that it is within noise.",
+   "groups": [
+    {
+     "group": "Arts",
+     "n_before": 110,
+     "n_after": 140,
+     "share_before_pct": 23.5,
+     "share_after_pct": 23.6,
+     "before": 8.18,
+     "after": 2.86,
+     "mix_contribution": 0.01,
+     "within_group_contribution": -1.25,
+     "within_group_ci": [
+      -2.8,
+      0.23
+     ]
+    },
+    {
+     "group": "Forestry",
+     "n_before": 8,
+     "n_after": 21,
+     "share_before_pct": 1.7,
+     "share_after_pct": 3.5,
+     "before": 0.0,
+     "after": 19.05,
+     "mix_contribution": 0.17,
+     "within_group_contribution": 0.5,
+     "within_group_ci": [
+      0.0,
+      0.97
+     ]
+    },
+    {
+     "group": "Education",
+     "n_before": 21,
+     "n_after": 37,
+     "share_before_pct": 4.5,
+     "share_after_pct": 6.2,
+     "before": 0.0,
+     "after": 8.11,
+     "mix_contribution": 0.07,
+     "within_group_contribution": 0.43,
+     "within_group_ci": [
+      0.0,
+      1.02
+     ]
+    },
+    {
+     "group": "Business",
+     "n_before": 43,
+     "n_after": 28,
+     "share_before_pct": 9.2,
+     "share_after_pct": 4.7,
+     "before": 4.65,
+     "after": 10.71,
+     "mix_contribution": -0.34,
+     "within_group_contribution": 0.42,
+     "within_group_ci": [
+      -0.42,
+      1.3
+     ]
+    },
+    {
+     "group": "Kinesiology",
+     "n_before": 28,
+     "n_after": 27,
+     "share_before_pct": 6.0,
+     "share_after_pct": 4.6,
+     "before": 0.0,
+     "after": 7.41,
+     "mix_contribution": -0.05,
+     "within_group_contribution": 0.39,
+     "within_group_ci": [
+      0.0,
+      1.27
+     ]
+    },
+    {
+     "group": "Graduate and Postdoctoral Studies",
+     "n_before": 30,
+     "n_after": 40,
+     "share_before_pct": 6.4,
+     "share_after_pct": 6.7,
+     "before": 3.33,
+     "after": 7.5,
+     "mix_contribution": 0.02,
+     "within_group_contribution": 0.27,
+     "within_group_ci": [
+      -0.34,
+      0.96
+     ]
+    },
+    {
+     "group": "Other",
+     "n_before": 1,
+     "n_after": 20,
+     "share_before_pct": 0.2,
+     "share_after_pct": 3.4,
+     "before": 0.0,
+     "after": 15.0,
+     "mix_contribution": 0.24,
+     "within_group_contribution": 0.27,
+     "within_group_ci": [
+      0.0,
+      0.53
+     ]
+    },
+    {
+     "group": "Law",
+     "n_before": 20,
+     "n_after": 37,
+     "share_before_pct": 4.3,
+     "share_after_pct": 6.2,
+     "before": 10.0,
+     "after": 5.41,
+     "mix_contribution": 0.15,
+     "within_group_contribution": -0.24,
+     "within_group_ci": [
+      -1.36,
+      0.42
+     ]
+    },
+    {
+     "group": "UBC Vantage College",
+     "n_before": 16,
+     "n_after": 15,
+     "share_before_pct": 3.4,
+     "share_after_pct": 2.5,
+     "before": 12.5,
+     "after": 6.67,
+     "mix_contribution": -0.09,
+     "within_group_contribution": -0.17,
+     "within_group_ci": [
+      -0.8,
+      0.3
+     ]
+    },
+    {
+     "group": "Land and Food Systems",
+     "n_before": 20,
+     "n_after": 25,
+     "share_before_pct": 4.3,
+     "share_after_pct": 4.2,
+     "before": 5.0,
+     "after": 8.0,
+     "mix_contribution": -0.0,
+     "within_group_contribution": 0.13,
+     "within_group_ci": [
+      -0.44,
+      0.76
+     ]
+    },
+    {
+     "group": "Medicine",
+     "n_before": 19,
+     "n_after": 26,
+     "share_before_pct": 4.1,
+     "share_after_pct": 4.4,
+     "before": 5.26,
+     "after": 3.85,
+     "mix_contribution": 0.01,
+     "within_group_contribution": -0.06,
+     "within_group_ci": [
+      -0.58,
+      0.46
+     ]
+    },
+    {
+     "group": "Applied Science (Engineering)",
+     "n_before": 60,
+     "n_after": 48,
+     "share_before_pct": 12.8,
+     "share_after_pct": 8.1,
+     "before": 6.67,
+     "after": 6.25,
+     "mix_contribution": -0.31,
+     "within_group_contribution": -0.04,
+     "within_group_ci": [
+      -0.98,
+      0.92
+     ]
+    },
+    {
+     "group": "Science",
+     "n_before": 92,
+     "n_after": 129,
+     "share_before_pct": 19.7,
+     "share_after_pct": 21.8,
+     "before": 10.87,
+     "after": 10.85,
+     "mix_contribution": 0.23,
+     "within_group_contribution": -0.0,
+     "within_group_ci": [
+      -2.11,
+      1.78
+     ]
+    }
+   ],
+   "excluded_unknown": 0,
+   "pooled_into_other": [
+    "Music",
+    "Pharmaceutical Sciences"
+   ],
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)"
+  }
+ ],
+ [
+  "noshow_patterns",
+  {
+   "service_line": "Counselling"
+  },
+  {
+   "service_line": "counselling",
+   "term": "all",
+   "period": "2025-09-01 to 2026-10-31",
+   "appointments": 4088,
+   "students": 1267,
+   "overall_no_show_pct": 7.3,
+   "flags": [
+    {
+     "factor": "Appointment format",
+     "group": "In Person",
+     "appointments": 2467,
+     "students": 1099,
+     "no_show_pct": 5.2,
+     "gap_vs_others_pts": -5.3,
+     "ci_pts": [
+      -7.0,
+      -3.5
+     ],
+     "q": 0.0
+    },
+    {
+     "factor": "Appointment format",
+     "group": "Phone/Video",
+     "appointments": 1621,
+     "students": 913,
+     "no_show_pct": 10.5,
+     "gap_vs_others_pts": 5.3,
+     "ci_pts": [
+      3.5,
+      7.0
+     ],
+     "q": 0.0
+    }
+   ],
+   "tests_run": 42,
+   "all_groups": [
+    {
+     "factor": "Appointment format",
+     "group": "In Person",
+     "appointments": 2467,
+     "students": 1099,
+     "no_show_pct": 5.2,
+     "gap_vs_others_pts": -5.3,
+     "ci_pts": [
+      -7.0,
+      -3.5
+     ],
+     "q": 0.0
+    },
+    {
+     "factor": "Appointment format",
+     "group": "Phone/Video",
+     "appointments": 1621,
+     "students": 913,
+     "no_show_pct": 10.5,
+     "gap_vs_others_pts": 5.3,
+     "ci_pts": [
+      3.5,
+      7.0
+     ],
+     "q": 0.0
+    }
+   ],
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)"
+  }
+ ],
+ [
+  "care_journeys",
+  {
+   "service_line": "Counselling",
+   "dimension": "academic_level"
+  },
+  {
+   "service_line": "counselling",
+   "period": "2025-09-01 to 2026-10-31",
+   "episodes_start_between": "2025-11-30 and 2026-09-01",
+   "students": 619,
+   "single_visit_pct": 17.9,
+   "returned_within_30_days_pct": 78.2,
+   "median_days_to_second_visit": 14.0,
+   "missed_then_came_back": {
+    "students_with_a_missed_appointment": 225,
+    "attended_within_60_days_pct": 66.7
+   },
+   "dimension": "academic_level",
+   "groups": [
+    {
+     "group": "Graduate",
+     "students": 113,
+     "single_visit_pct": 3.5,
+     "single_visit_gap_pts": -17.6,
+     "returned_quickly_pct": 82.3,
+     "returned_quickly_gap_pts": 5.0,
+     "single_visit_q": 0.0,
+     "returned_quickly_q": 0.2419
+    },
+    {
+     "group": "Undergraduate",
+     "students": 506,
+     "single_visit_pct": 21.1,
+     "single_visit_gap_pts": 17.6,
+     "returned_quickly_pct": 77.3,
+     "returned_quickly_gap_pts": -5.0,
+     "single_visit_q": 0.0,
+     "returned_quickly_q": 0.2419
+    }
+   ],
+   "flags": [
+    {
+     "group": "Graduate",
+     "measure": "single_visit",
+     "group_pct": 3.5,
+     "gap_vs_others_pts": -17.6,
+     "q": 0.0,
+     "students": 113
+    },
+    {
+     "group": "Undergraduate",
+     "measure": "single_visit",
+     "group_pct": 21.1,
+     "gap_vs_others_pts": 17.6,
+     "q": 0.0,
+     "students": 506
+    }
+   ],
+   "tests_run": 4,
+   "excluded_unknown": 0,
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)"
+  }
+ ],
+ [
+  "priority_items",
+  {
+   "service": "counselling"
+  },
+  {
+   "service": "counselling",
+   "outcome": "overall satisfaction with the support received",
+   "respondents": 267,
+   "verdict": "clear_priorities",
+   "priorities": [
+    "My counsellor and I focused on the issues most important to me",
+    "My counsellor helped me understand my situation in more effective ways"
+   ],
+   "items": [
+    {
+     "item": "My counsellor and I focused on the issues most important to me",
+     "item_code": "CS1_6",
+     "link_to_outcome": 0.77,
+     "link_ci": [
+      0.71,
+      0.82
+     ],
+     "agree_pct": 22.4,
+     "students": 259,
+     "quadrant": "fix_first",
+     "fix_first_in_pct_of_resamples": 100,
+     "access_item": false
+    },
+    {
+     "item": "My counsellor helped me understand my situation in more effective ways",
+     "item_code": "CS1_7",
+     "link_to_outcome": 0.63,
+     "link_ci": [
+      0.56,
+      0.71
+     ],
+     "agree_pct": 45.7,
+     "students": 256,
+     "quadrant": "fix_first",
+     "fix_first_in_pct_of_resamples": 95,
+     "access_item": false
+    },
+    {
+     "item": "I have made positive changes in the areas that concerned me",
+     "item_code": "CS1_8",
+     "link_to_outcome": 0.47,
+     "link_ci": [
+      0.37,
+      0.56
+     ],
+     "agree_pct": 52.3,
+     "students": 256,
+     "quadrant": "keep_up",
+     "fix_first_in_pct_of_resamples": 4,
+     "access_item": false
+    },
+    {
+     "item": "The length of my session was right for me",
+     "item_code": "CS1_10",
+     "link_to_outcome": 0.41,
+     "link_ci": [
+      0.3,
+      0.51
+     ],
+     "agree_pct": 66.9,
+     "students": 260,
+     "quadrant": "keep_up",
+     "fix_first_in_pct_of_resamples": 0,
+     "access_item": false
+    },
+    {
+     "item": "I was informed about other campus resources",
+     "item_code": "CS1_9",
+     "link_to_outcome": 0.24,
+     "link_ci": [
+      0.14,
+      0.35
+     ],
+     "agree_pct": 36.6,
+     "students": 262,
+     "quadrant": "monitor",
+     "fix_first_in_pct_of_resamples": 0,
+     "access_item": false
+    },
+    {
+     "item": "I could book an appointment easily",
+     "item_code": "CS1_1",
+     "link_to_outcome": 0.13,
+     "link_ci": [
+      -0.0,
+      0.26
+     ],
+     "agree_pct": 25.4,
+     "students": 252,
+     "quadrant": "monitor",
+     "fix_first_in_pct_of_resamples": 0,
+     "access_item": true
+    },
+    {
+     "item": "I felt welcomed and included in the space",
+     "item_code": "CS1_3",
+     "link_to_outcome": 0.4,
+     "link_ci": [
+      0.29,
+      0.5
+     ],
+     "agree_pct": 63.4,
+     "students": 257,
+     "quadrant": "possibly_over_served",
+     "fix_first_in_pct_of_resamples": 0,
+     "access_item": false
+    },
+    {
+     "item": "Front desk staff were courteous and respectful",
+     "item_code": "CS1_2",
+     "link_to_outcome": 0.08,
+     "link_ci": [
+      -0.04,
+      0.22
+     ],
+     "agree_pct": 82.4,
+     "students": 261,
+     "quadrant": "possibly_over_served",
+     "fix_first_in_pct_of_resamples": 0,
+     "access_item": false
+    }
+   ],
+   "link_spread": 0.69
+  }
+ ],
+ [
+  "explain_difference",
+  {
+   "dimension": "academic_level",
+   "group": "Graduate",
+   "compare_to": "Undergraduate",
+   "service_line": "Counselling"
+  },
+  {
+   "group": "academic_level = Graduate",
+   "comparison": "Undergraduate",
+   "service_line": "counselling",
+   "term": "all terms",
+   "decomposition": {
+    "students": {
+     "group": 229,
+     "comparison": 996,
+     "ratio": 0.23
+    },
+    "visits_per_student": {
+     "group": 4.45,
+     "comparison": 2.5,
+     "ratio": 1.78
+    },
+    "total_visits": {
+     "group": 1018,
+     "comparison": 2490,
+     "ratio": 0.41
+    },
+    "summary": "Graduate: 229 students vs 996 for Undergraduate, each attending 4.4 visits vs 2.5 (1.8x), so total visits are 1,018 vs 2,490."
+   },
+   "findings": [
+    "Visits per student is 1.8x higher for academic_level = Graduate (4.45 vs 2.5, p < 0.001)",
+    "Days in care (first to last visit) is 3.1x higher for academic_level = Graduate (65.48 vs 21.21, p < 0.001)"
+   ],
+   "measures": [
+    {
+     "measure": "Visits per student",
+     "group": 4.45,
+     "comparison": 2.5,
+     "ratio": 1.78,
+     "p": 0.0,
+     "significant": true
+    },
+    {
+     "measure": "Days in care (first to last visit)",
+     "group": 65.48,
+     "comparison": 21.21,
+     "ratio": 3.09,
+     "p": 0.0,
+     "significant": true
+    },
+    {
+     "measure": "Services used per student",
+     "group": 1.0,
+     "comparison": 1.0,
+     "ratio": 1.0,
+     "p": null,
+     "significant": false
+    },
+    {
+     "measure": "No-show rate (%)",
+     "group": 7.2,
+     "comparison": 7.4,
+     "ratio": 0.98,
+     "p": 0.8398,
+     "significant": false
+    }
+   ],
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)"
+  }
+ ],
+ [
+  "equity_flags",
+  {},
+  {
+   "comparisons_run": 42,
+   "flags": [
+    {
+     "service": "counselling",
+     "dimension": "disability_any",
+     "group": "yes",
+     "n_group": 61,
+     "pct_agree_group": 41.3,
+     "pct_agree_rest": 52.0,
+     "gap_pts": -10.7,
+     "q": 0.002
+    },
+    {
+     "service": "counselling",
+     "dimension": "disability_any",
+     "group": "no",
+     "n_group": 217,
+     "pct_agree_group": 52.0,
+     "pct_agree_rest": 41.3,
+     "gap_pts": 10.7,
+     "q": 0.002
+    }
+   ],
+   "groups_too_small_to_compare": 21
+  }
+ ],
+ [
+  "group_vs_everyone",
+  {
+   "dimension": "disability_any",
+   "value": "yes"
+  },
+  {
+   "group": "disability_any = yes",
+   "overall": {
+    "n_group": 176,
+    "n_everyone": 700,
+    "pct_agree_group": 50.9,
+    "pct_agree_everyone": 54.0,
+    "mean_group": 3.46,
+    "mean_everyone": 3.57,
+    "p": 0.0179,
+    "significant": true
+   },
+   "by_service": [
+    {
+     "service": "counselling",
+     "n_group": 61,
+     "pct_agree_group": 41.3,
+     "pct_agree_everyone": 49.6,
+     "gap_pts": -8.3,
+     "mean_group": 3.24,
+     "mean_everyone": 3.48,
+     "p": 0.0001,
+     "q": 0.0002,
+     "significant": true
+    },
+    {
+     "service": "medical",
+     "n_group": 73,
+     "pct_agree_group": 56.0,
+     "pct_agree_everyone": 55.7,
+     "gap_pts": 0.3,
+     "mean_group": 3.59,
+     "mean_everyone": 3.6,
+     "p": 0.7317,
+     "q": 0.8622,
+     "significant": false
+    },
+    {
+     "service": "wellness_adv",
+     "n_group": 40,
+     "pct_agree_group": 63.6,
+     "pct_agree_everyone": 63.5,
+     "gap_pts": 0.1,
+     "mean_group": 3.75,
+     "mean_everyone": 3.77,
+     "p": 0.8622,
+     "q": 0.8622,
+     "significant": false
+    }
+   ]
+  }
+ ],
+ [
+  "chr_trend",
+  {
+   "service_line": "Counselling",
+   "freq": "month"
+  },
+  {
+   "rows": [
+    {
+     "period": "2025-09",
+     "appointments": 126,
+     "n_students": 92,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2025-10",
+     "appointments": 282,
+     "n_students": 190,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2025-11",
+     "appointments": 359,
+     "n_students": 244,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2025-12",
+     "appointments": 323,
+     "n_students": 209,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-01",
+     "appointments": 314,
+     "n_students": 208,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-02",
+     "appointments": 260,
+     "n_students": 193,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-03",
+     "appointments": 398,
+     "n_students": 268,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-04",
+     "appointments": 354,
+     "n_students": 232,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-05",
+     "appointments": 224,
+     "n_students": 148,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-06",
+     "appointments": 144,
+     "n_students": 94,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-07",
+     "appointments": 104,
+     "n_students": 67,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-08",
+     "appointments": 113,
+     "n_students": 78,
+     "same_month_last_year": null,
+     "change_pct": null,
+     "p": null,
+     "notable_change": false
+    },
+    {
+     "period": "2026-09",
+     "appointments": 163,
+     "n_students": 121,
+     "same_month_last_year": 126.0,
+     "change_pct": 29.4,
+     "p": 0.0295,
+     "notable_change": true
+    },
+    {
+     "period": "2026-10",
+     "appointments": 344,
+     "n_students": 235,
+     "same_month_last_year": 282.0,
+     "change_pct": 22.0,
+     "p": 0.0132,
+     "notable_change": true
+    }
+   ],
+   "row_count": 14,
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)",
+   "note": "notable_change = at least 10% different from the same month last year and unlikely to be chance (p < 0.05)."
+  }
+ ],
+ [
+  "chr_trend",
+  {
+   "service_line": "Counselling",
+   "freq": "term"
+  },
+  {
+   "rows": [
+    {
+     "period": "2025 Fall",
+     "appointments": 1090,
+     "n_students": 434
+    },
+    {
+     "period": "2026 Fall",
+     "appointments": 507,
+     "n_students": 281
+    },
+    {
+     "period": "2026 Summer",
+     "appointments": 585,
+     "n_students": 249
+    },
+    {
+     "period": "2026 Winter",
+     "appointments": 1326,
+     "n_students": 533
+    }
+   ],
+   "row_count": 4,
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)",
+   "note": "notable_change = at least 10% different from the same month last year and unlikely to be chance (p < 0.05).",
+   "warning": "PARTIAL TERM: 2026 Fall has data only from 2026-09-01 to 2026-10-31. Do not compare it with a complete term: totals, visits and days in care will look lower only because less time is covered. For change between periods use what_changed, which compares matching date windows."
+  }
+ ],
+ [
+  "chr_summary",
+  {
+   "service_line": "Counselling",
+   "dimension": "faculty"
+  },
+  {
+   "rows": [
+    {
+     "faculty": "Applied Science (Engineering)",
+     "n_students": 144,
+     "appointments_booked": 456,
+     "appointments_attended": 392,
+     "visits_per_student": 2.72,
+     "median_days_in_care": 21.0,
+     "no_show_rate_pct": 6.1
+    },
+    {
+     "faculty": "Arts",
+     "n_students": 267,
+     "appointments_booked": 885,
+     "appointments_attended": 765,
+     "visits_per_student": 2.87,
+     "median_days_in_care": 23.0,
+     "no_show_rate_pct": 7.2
+    },
+    {
+     "faculty": "Business",
+     "n_students": 99,
+     "appointments_booked": 344,
+     "appointments_attended": 293,
+     "visits_per_student": 2.96,
+     "median_days_in_care": 22.0,
+     "no_show_rate_pct": 6.7
+    },
+    {
+     "faculty": "Education",
+     "n_students": 53,
+     "appointments_booked": 165,
+     "appointments_attended": 137,
+     "visits_per_student": 2.58,
+     "median_days_in_care": 15.0,
+     "no_show_rate_pct": 7.9
+    },
+    {
+     "faculty": "Forestry",
+     "n_students": 36,
+     "appointments_booked": 116,
+     "appointments_attended": 94,
+     "visits_per_student": 2.61,
+     "median_days_in_care": 12.5,
+     "no_show_rate_pct": 8.6
+    },
+    {
+     "faculty": "Graduate and Postdoctoral Studies",
+     "n_students": 79,
+     "appointments_booked": 426,
+     "appointments_attended": 365,
+     "visits_per_student": 4.62,
+     "median_days_in_care": 67.0,
+     "no_show_rate_pct": 8.5
+    },
+    {
+     "faculty": "Kinesiology",
+     "n_students": 63,
+     "appointments_booked": 206,
+     "appointments_attended": 181,
+     "visits_per_student": 2.87,
+     "median_days_in_care": 23.0,
+     "no_show_rate_pct": 5.3
+    },
+    {
+     "faculty": "Land and Food Systems",
+     "n_students": 51,
+     "appointments_booked": 156,
+     "appointments_attended": 134,
+     "visits_per_student": 2.63,
+     "median_days_in_care": 24.0,
+     "no_show_rate_pct": 7.7
+    },
+    {
+     "faculty": "Law",
+     "n_students": 43,
+     "appointments_booked": 143,
+     "appointments_attended": 125,
+     "visits_per_student": 2.91,
+     "median_days_in_care": 23.0,
+     "no_show_rate_pct": 4.9
+    },
+    {
+     "faculty": "Medicine",
+     "n_students": 68,
+     "appointments_booked": 189,
+     "appointments_attended": 168,
+     "visits_per_student": 2.47,
+     "median_days_in_care": 15.0,
+     "no_show_rate_pct": 5.8
+    },
+    {
+     "faculty": "Music",
+     "n_students": 16,
+     "appointments_booked": 45,
+     "appointments_attended": 42,
+     "visits_per_student": 2.62,
+     "median_days_in_care": 12.5,
+     "no_show_rate_pct": 6.7
+    },
+    {
+     "faculty": "Pharmaceutical Sciences",
+     "n_students": 17,
+     "appointments_booked": 52,
+     "appointments_attended": 44,
+     "visits_per_student": 2.59,
+     "median_days_in_care": 13.0,
+     "no_show_rate_pct": 7.7
+    },
+    {
+     "faculty": "Science",
+     "n_students": 252,
+     "appointments_booked": 802,
+     "appointments_attended": 679,
+     "visits_per_student": 2.69,
+     "median_days_in_care": 16.0,
+     "no_show_rate_pct": 8.6
+    },
+    {
+     "faculty": "UBC Vantage College",
+     "n_students": 37,
+     "appointments_booked": 103,
+     "appointments_attended": 89,
+     "visits_per_student": 2.41,
+     "median_days_in_care": 16.0,
+     "no_show_rate_pct": 7.8
+    }
+   ],
+   "row_count": 14,
+   "data_source": "CHR appointments (SYNTHETIC test data, not real)"
+  }
+ ],
+ [
+  "item_summary",
+  {
+   "service": "counselling"
+  },
+  {
+   "rows": [
+    {
+     "item_code": "CS1_6",
+     "item_text": "My counsellor and I focused on the issues most important to me",
+     "n": 270,
+     "mean_score": 2.78,
+     "pct_agree": 22.6
+    },
+    {
+     "item_code": "CS1_1",
+     "item_text": "I could book an appointment easily",
+     "n": 263,
+     "mean_score": 2.94,
+     "pct_agree": 25.1
+    },
+    {
+     "item_code": "CS1_9",
+     "item_text": "I was informed about other campus resources",
+     "n": 272,
+     "mean_score": 3.24,
+     "pct_agree": 36.8
+    },
+    {
+     "item_code": "CS1_7",
+     "item_text": "My counsellor helped me understand my situation in more effective ways",
+     "n": 267,
+     "mean_score": 3.34,
+     "pct_agree": 45.3
+    },
+    {
+     "item_code": "CS1_11",
+     "item_text": "Overall, I am satisfied with the support I received",
+     "n": 267,
+     "mean_score": 3.39,
+     "pct_agree": 45.3
+    },
+    {
+     "item_code": "CS1_4",
+     "item_text": "I would recommend UBC Student Health and Wellbeing to a friend",
+     "n": 267,
+     "mean_score": 3.55,
+     "pct_agree": 51.3
+    },
+    {
+     "item_code": "CS1_5",
+     "item_text": "I would recommend the Wellness Info Desk to anyone who needs help finding health and wellness resources on campus",
+     "n": 264,
+     "mean_score": 3.49,
+     "pct_agree": 52.3
+    },
+    {
+     "item_code": "CS1_8",
+     "item_text": "I have made positive changes in the areas that concerned me",
+     "n": 267,
+     "mean_score": 3.58,
+     "pct_agree": 52.4
+    },
+    {
+     "item_code": "CS1_3",
+     "item_text": "I felt welcomed and included in the space",
+     "n": 268,
+     "mean_score": 3.76,
+     "pct_agree": 63.4
+    },
+    {
+     "item_code": "CS1_10",
+     "item_text": "The length of my session was right for me",
+     "n": 269,
+     "mean_score": 3.91,
+     "pct_agree": 67.7
+    },
+    {
+     "item_code": "CS1_2",
+     "item_text": "Front desk staff were courteous and respectful",
+     "n": 272,
+     "mean_score": 4.28,
+     "pct_agree": 82.7
+    }
+   ],
+   "row_count": 11,
+   "note": "Sorted lowest % agree first."
+  }
+ ],
+ [
+  "compare_groups",
+  {
+   "dimension": "academic_level",
+   "service": "counselling"
+  },
+  {
+   "rows": [
+    {
+     "academic_level": "1",
+     "n": 191,
+     "mean_score": 3.49,
+     "pct_agree": 50.7
+    },
+    {
+     "academic_level": "2",
+     "n": 49,
+     "mean_score": 3.48,
+     "pct_agree": 48.0
+    },
+    {
+     "academic_level": "3",
+     "n": 38,
+     "mean_score": 3.43,
+     "pct_agree": 46.4
+    }
+   ],
+   "row_count": 3,
+   "note": "Descriptive only (not a significance test).",
+   "everyone": {
+    "n": 278,
+    "pct_agree": 49.6,
+    "mean_score": 3.48
+   }
+  }
+ ],
+ [
+  "service_summary",
+  {},
+  {
+   "rows": [
+    {
+     "service": "counselling",
+     "n": 278,
+     "mean_score": 3.48,
+     "pct_agree": 49.6
+    },
+    {
+     "service": "medical",
+     "n": 264,
+     "mean_score": 3.59,
+     "pct_agree": 55.6
+    },
+    {
+     "service": "wellness_adv",
+     "n": 146,
+     "mean_score": 3.77,
+     "pct_agree": 63.5
+    },
+    {
+     "service": "info_desk",
+     "n": 12,
+     "mean_score": 3.83,
+     "pct_agree": 70.8
+    }
+   ],
+   "row_count": 4
+  }
+ ],
+ [
+  "wait_time_vs_rating",
+  {
+   "service": "medical"
+  },
+  {
+   "rows": [
+    {
+     "wait": "1",
+     "n": 95,
+     "mean_score": 3.63,
+     "pct_agree": 57.5
+    },
+    {
+     "wait": "2",
+     "n": 77,
+     "mean_score": 3.65,
+     "pct_agree": 57.9
+    },
+    {
+     "wait": "3",
+     "n": 58,
+     "mean_score": 3.61,
+     "pct_agree": 55.8
+    },
+    {
+     "wait": "4",
+     "n": 34,
+     "mean_score": 3.33,
+     "pct_agree": 44.6
+    }
+   ],
+   "row_count": 4,
+   "correlation": {
+    "spearman_rho": -0.118,
+    "p_value": 0.0562,
+    "n": 264
+   },
+   "interpretation": "Longer waits go with slightly lower ratings (rho = -0.118), but this is NOT statistically significant (p = 0.0562), so there is no clear relationship.",
+   "note": "Wait codes are ordered shortest to longest (assumed until labels are loaded)."
+  }
+ ],
+ [
+  "survey_vs_visits",
+  {
+   "dimension": "faculty"
+  },
+  {
+   "rows": [
+    {
+     "faculty": "Applied Science (Engineering)",
+     "n_respondents": 49,
+     "n_students_seen": 275.0,
+     "pct_of_survey": 6.7,
+     "pct_of_visitors": 11.6,
+     "representation_ratio": 0.58
+    },
+    {
+     "faculty": "Law",
+     "n_respondents": 16,
+     "n_students_seen": 79.0,
+     "pct_of_survey": 2.2,
+     "pct_of_visitors": 3.3,
+     "representation_ratio": 0.67
+    },
+    {
+     "faculty": "UBC Vantage College",
+     "n_respondents": 15,
+     "n_students_seen": 71.0,
+     "pct_of_survey": 2.0,
+     "pct_of_visitors": 3.0,
+     "representation_ratio": 0.67
+    },
+    {
+     "faculty": "Medicine",
+     "n_respondents": 30,
+     "n_students_seen": 141.0,
+     "pct_of_survey": 4.1,
+     "pct_of_visitors": 6.0,
+     "representation_ratio": 0.68
+    },
+    {
+     "faculty": "Pharmaceutical Sciences",
+     "n_respondents": 11,
+     "n_students_seen": 45.0,
+     "pct_of_survey": 1.5,
+     "pct_of_visitors": 1.9,
+     "representation_ratio": 0.79
+    },
+    {
+     "faculty": "Science",
+     "n_respondents": 127,
+     "n_students_seen": 475.0,
+     "pct_of_survey": 17.3,
+     "pct_of_visitors": 20.1,
+     "representation_ratio": 0.86
+    },
+    {
+     "faculty": "Music",
+     "n_respondents": 10,
+     "n_students_seen": 37.0,
+     "pct_of_survey": 1.4,
+     "pct_of_visitors": 1.6,
+     "representation_ratio": 0.87
+    },
+    {
+     "faculty": "Land and Food Systems",
+     "n_respondents": 24,
+     "n_students_seen": 88.0,
+     "pct_of_survey": 3.3,
+     "pct_of_visitors": 3.7,
+     "representation_ratio": 0.89
+    },
+    {
+     "faculty": "Business",
+     "n_respondents": 57,
+     "n_students_seen": 205.0,
+     "pct_of_survey": 7.8,
+     "pct_of_visitors": 8.7,
+     "representation_ratio": 0.9
+    },
+    {
+     "faculty": "Forestry",
+     "n_respondents": 21,
+     "n_students_seen": 75.0,
+     "pct_of_survey": 2.9,
+     "pct_of_visitors": 3.2,
+     "representation_ratio": 0.91
+    },
+    {
+     "faculty": "Education",
+     "n_respondents": 33,
+     "n_students_seen": 109.0,
+     "pct_of_survey": 4.5,
+     "pct_of_visitors": 4.6,
+     "representation_ratio": 0.98
+    },
+    {
+     "faculty": "Graduate and Postdoctoral Studies",
+     "n_respondents": 45,
+     "n_students_seen": 140.0,
+     "pct_of_survey": 6.1,
+     "pct_of_visitors": 5.9,
+     "representation_ratio": 1.03
+    },
+    {
+     "faculty": "Arts",
+     "n_respondents": 177,
+     "n_students_seen": 516.0,
+     "pct_of_survey": 24.1,
+     "pct_of_visitors": 21.9,
+     "representation_ratio": 1.1
+    },
+    {
+     "faculty": "Kinesiology",
+     "n_respondents": 36,
+     "n_students_seen": 105.0,
+     "pct_of_survey": 4.9,
+     "pct_of_visitors": 4.4,
+     "representation_ratio": 1.11
+    },
+    {
+     "faculty": "Applied Science (Nursing)",
+     "n_respondents": 14,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 1.9,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Architecture and Landscape Architecture",
+     "n_respondents": 5,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 0.7,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Audiology and Speech Sciences",
+     "n_respondents": 6,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 0.8,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Dentistry",
+     "n_respondents": 5,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 0.7,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Information (School of)",
+     "n_respondents": 6,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 0.8,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Journalism, Writing, and Media",
+     "n_respondents": 10,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 1.4,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Other",
+     "n_respondents": 5,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 0.7,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Population and Public Health",
+     "n_respondents": 10,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 1.4,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Public Policy and Global Affairs",
+     "n_respondents": 9,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 1.2,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    },
+    {
+     "faculty": "Social Work",
+     "n_respondents": 5,
+     "n_students_seen": 0.0,
+     "pct_of_survey": 0.7,
+     "pct_of_visitors": 0.0,
+     "representation_ratio": null
+    }
+   ],
+   "row_count": 24,
+   "data_source": "survey respondents vs CHR appointments (SYNTHETIC test data, not real)",
+   "note": "representation_ratio below 1 = this group is under-represented in survey responses compared with who actually visits."
+  }
+ ],
+ [
+  "service_pathways",
+  {},
+  {
+   "within_days": 30,
+   "period": "2025-09-01 to 2026-10-31",
+   "data_source": "SYNTHETIC",
+   "pathways": [
+    {
+     "from": "Medical",
+     "to": "Counselling",
+     "students_starting": 656,
+     "went_on_within_days": 153,
+     "pct": 23.3,
+     "ci_pct": [
+      20.2,
+      26.7
+     ]
+    },
+    {
+     "from": "Counselling",
+     "to": "Medical",
+     "students_starting": 786,
+     "went_on_within_days": 130,
+     "pct": 16.5,
+     "ci_pct": [
+      14.1,
+      19.3
+     ]
+    },
+    {
+     "from": "Medical",
+     "to": "Wellness Advising",
+     "students_starting": 656,
+     "went_on_within_days": 10,
+     "pct": 1.5,
+     "ci_pct": [
+      0.8,
+      2.8
+     ]
+    }
+   ]
+  }
+ ],
+ [
+  "survey_changed",
+  {},
+  {
+   "periods": {
+    "before": "2025-09-01 to 2025-10-31",
+    "after": "2026-09-01 to 2026-10-31"
+   },
+   "compare": "last_year",
+   "service": null,
+   "dimension": null,
+   "services": [
+    {
+     "service": "counselling",
+     "respondents_before": 211,
+     "respondents_after": 204,
+     "pct_agree_before": 49.5,
+     "pct_agree_after": 50.4,
+     "change_pts": 0.9,
+     "ci_pts": [
+      -3.8,
+      5.7
+     ],
+     "verdict": "no clear change"
+    },
+    {
+     "service": "medical",
+     "respondents_before": 169,
+     "respondents_after": 181,
+     "pct_agree_before": 52.4,
+     "pct_agree_after": 50.6,
+     "change_pts": -1.8,
+     "ci_pts": [
+      -7.3,
+      3.7
+     ],
+     "verdict": "no clear change"
+    },
+    {
+     "service": "wellness_adv",
+     "respondents_before": 90,
+     "respondents_after": 86,
+     "pct_agree_before": 54.7,
+     "pct_agree_after": 57.7,
+     "change_pts": 3.0,
+     "ci_pts": [
+      -6.6,
+      12.6
+     ],
+     "verdict": "no clear change"
+    }
+   ],
+   "questions_that_changed": [
+    {
+     "service": "medical",
+     "item_code": "MED1_6",
+     "item": "I was seen close to my appointment time",
+     "pct_agree_before": 34.6,
+     "pct_agree_after": 58.1,
+     "students_before": 162,
+     "students_after": 167,
+     "change_pts": 23.5,
+     "q": 0.0005
+    }
+   ],
+   "questions_checked": 26,
+   "groups_that_changed": [
+    {
+     "service": "counselling",
+     "dimension": "disability_any",
+     "group": "yes",
+     "respondents_before": 36,
+     "respondents_after": 37,
+     "pct_agree_before": 45.4,
+     "pct_agree_after": 26.2,
+     "change_pts": -19.2,
+     "ci_pts": [
+      -29.9,
+      -8.5
+     ],
+     "everyone_else_change_pts": 5.4,
+     "change_vs_everyone_else_pts": -24.6,
+     "differs_from_everyone_else": true,
+     "q": 0.0325
+    }
+   ],
+   "groups_checked": 46,
+   "groups_too_small_to_check": 14,
+   "tests_run": 75,
+   "smallest_group_change_detectable_pts": 14.0,
+   "verdict": "changes_found",
+   "notes": [
+    "The survey is anonymous, so the two windows hold different students. A change can come from who chose to answer as well as from a change in experience. A pattern, not a cause.",
+    "A question is listed when it moved at least 8 points and the move held up after correcting for all 26 questions checked; a group, at least 10 points after correcting for all 46 groups checked.",
+    "A group is listed only if it also moved differently from other students over the same dates; a shift shared by everyone shows up in the service's own change instead.",
+    "With the number of responses in these windows, a typical group's rating would need to move by about 14 points before it could be told apart from chance. Smaller shifts may be real and still not show up; a longer window (window_days) gives more responses.",
+    "14 groups had fewer than 10 respondents in one of the windows and could not be checked. That is a limit of the data, not evidence of no change."
+   ],
+   "services_with_too_few_responses": [
+    {
+     "service": "info_desk",
+     "respondents_before": 8,
+     "respondents_after": 11
+    }
+   ],
+   "data_source": "Student experience survey, responses in the two windows shown"
+  }
+ ]
+]

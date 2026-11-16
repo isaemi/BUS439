@@ -290,6 +290,40 @@ use_cases:
   next:
     - What data would let us say whether a group is under-served?
 
+- id: survey_over_time
+  title: Have survey ratings changed, and for whom?
+  status: ready
+  audience: SHW leadership, service managers, equity leads
+  questions:
+    - Has student satisfaction changed since last year?
+    - Are any groups of students rating us worse than they used to?
+    - What has changed in the survey results this term?
+    - Did ratings for counselling improve compared with last fall?
+    - Are students with disabilities rating us differently than before?
+  keywords: [survey changed, satisfaction changed, ratings changed, worse than before, better than before, than they used to, historically, over time, since last year, year over year, improved, declined, trend in ratings]
+  why: >
+    Leaders want to know when a group's experience starts to shift, not a year later. Comparing
+    the same dates a year apart avoids seasonal effects, and testing every question and group
+    with a correction keeps chance movements from being reported.
+  steps:
+    - {tool: survey_changed, purpose: "services, questions and groups whose ratings moved, tested"}
+  read: >
+    Lead with groups_that_changed, then questions_that_changed, each with before and after % agree,
+    the change, and the number of students in each window. Say whether the group moved differently
+    from everyone else. If nothing is listed, say there is no clear change and give
+    smallest_group_change_detectable_pts so the reader knows how big a shift could have been missed.
+  avoid:
+    - Calling a change real when it is not in groups_that_changed or questions_that_changed.
+    - Saying why ratings changed; the two windows hold different students.
+    - Treating "no clear change" for a small group as evidence that nothing changed.
+  say: >
+    "Students reporting a disability rate counselling lower than a year ago: A% then B% (n=N then
+    M), while other students' ratings did not fall." or "No clear change; with this many responses
+    a group's rating would need to move about X points to be detected."
+  next:
+    - What are students saying about that service in their comments?
+    - Do some groups of students rate counselling lower?
+
 - id: survey_weak_spots
   title: Which parts of a service experience matter most, and need attention?
   status: ready

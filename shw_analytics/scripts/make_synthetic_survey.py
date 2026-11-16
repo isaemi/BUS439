@@ -11,6 +11,9 @@ planted so the analysis has something true to find:
     front-desk courtesy scores high and matters little.
   * Students reporting a disability rate counselling about 12 points lower.
   * Medical: the longer the reported wait, the lower the ratings.
+  * Over time: responses run from September 2025 to October 2026. This fall, students reporting
+    a disability rate counselling clearly lower than they did last fall, and one medical question
+    (being seen close to the appointment time) scores higher. Everything else is stable.
   * Comments: realistic written feedback whose tone follows each student's ratings. Students
     with long medical waits write about waiting; disabled students raise accessibility in
     counselling; graduate students raise scheduling. About 3% include a name, email or number,
@@ -246,11 +249,17 @@ def write_labels(path):
                           "# Delete this file when real data is loaded; real labels belong in dictionary.yaml.\n" + body)
 
 
+START = pd.Timestamp("2025-09-01")
+SPAN_MINUTES = int((pd.Timestamp("2026-11-01") - START).total_seconds() // 60)
+RECENT = pd.Timestamp("2026-09-01")          # planted changes over time start here
+IMPROVED = ("MED1", 6)                       # "I was seen close to my appointment time"
+
+
 def _likert(latent, shift):
     return np.clip(np.round(3.55 + 0.9 * latent + shift), 1, 5).astype(int)
 
 
-def make(n=700, seed=11):
+def make(n=3600, seed=11):
     rng = np.random.default_rng(seed)
     d = load_dictionary()
     fac = d["checkbox"]["faculty"]["choices"]
@@ -262,14 +271,18 @@ def make(n=700, seed=11):
         level = int(rng.choice([1, 2, 3], p=[0.76, 0.20, 0.04]))           # see LABELS["D1"]
         disability = rng.random() < 0.22
         wait = int(rng.choice([1, 2, 3, 4], p=[0.35, 0.3, 0.2, 0.15]))
+        # Responses are spread over the same 14 months as the synthetic appointments, so results
+        # can be compared over time.
+        when = START + pd.Timedelta(minutes=int(rng.integers(0, SPAN_MINUTES)))
+        this_fall = when >= RECENT
         sat = rng.normal(0, 1)
         if svc == 8 and disability:
-            sat -= 0.7
+            sat -= 0.6 + (1.4 if this_fall else 0.0)                    # a gap that has WIDENED this fall
         if svc == 3:
             sat -= 0.3 * (wait - 1)                                     # the longer the wait, the lower the ratings
         r = {"ResponseId": f"R_syn{i:05d}", "DistributionChannel": "anonymous", "Finished": "1",
              "Progress": "100", "Int1": str(svc),
-             "RecordedDate": str(pd.Timestamp("2026-10-17") + pd.Timedelta(minutes=int(rng.integers(0, 14400)))),
+             "RecordedDate": str(when),
              "D1": str(level), "D2": str(rng.integers(1, 3)), "D3": str(rng.integers(1, 6)),
              "D4": str(rng.choice([1, 2], p=[0.9, 0.1])), "D7": str(rng.choice([1, 2], p=[0.28, 0.72])),
              "D8": str(rng.integers(1, 6)), "D9": str(rng.choice([1, 2], p=[0.04, 0.96])),
@@ -282,6 +295,8 @@ def make(n=700, seed=11):
             if rng.random() < 0.04:
                 continue                                                    # a skipped question
             latent = link * sat + np.sqrt(max(0.0, 1 - link ** 2)) * rng.normal()
+            if this_fall and (block, q) == IMPROVED:
+                latent += 0.75                                              # one thing that got better
             score = int(_likert(latent, shift))
             if block == "WA1" and q == 10 and "WA1_8" in r:
                 score = int(r["WA1_8"])                                     # the duplicated question
@@ -312,7 +327,7 @@ def make(n=700, seed=11):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=700)
+    ap.add_argument("--n", type=int, default=3600)      # about a year's responses at SHW's real volume
     ap.add_argument("--out", default=str(config.DB_PATH.parent / "exports" / "synthetic_survey.csv"))
     a = ap.parse_args()
     out = Path(a.out)

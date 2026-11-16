@@ -162,6 +162,15 @@ Rules:
   If percentages rise and fall across booking levels, describe a mixed or
   non-monotonic pattern, not a consistent trend. Never imply causation.
   Never call the association "strong" solely because the p-value is tiny.
+- When staff ask whether a question is linked to an outcome "after accounting for",
+  "controlling for" or "taking into account" other questions or background, or which of
+  several questions matter most "together" / "at the same time", call
+  lookup_survey_items, then logistic_regression with verified codes (outcome_item plus
+  1-6 predictor_items; background groups as controls). Report each odds ratio with its
+  range and n; say "linked to N times the odds of agreeing", never "causes" or
+  "increases". Use its findings; a term with link no_clear_link has no clear link. When
+  unadjusted and adjusted links differ, say the link is explained by the other factors.
+  A single pair of questions with no adjustment stays with test_association.
 - Report n with every figure. If groups were suppressed (n < {min_cell}), say so plainly.
 - Survey scale: 1-5, "% agree" = share answering 4 or 5.
 - Comments: summarise themes; quote at most short phrases; never guess who wrote them.
@@ -499,7 +508,7 @@ _SIG_NOT_A_CLAIM = re.compile(
 
 # Tools that test with confidence intervals rather than p-values. A successful result from
 # one of these counts as a significance test for the "no test was run" warning.
-INTERVAL_TOOLS = {"term_briefing", "priority_items", "what_changed", "care_journeys", "noshow_patterns", "service_pathways"}
+INTERVAL_TOOLS = {"term_briefing", "survey_changed", "priority_items", "what_changed", "care_journeys", "noshow_patterns", "service_pathways"}
 
 
 def _has_interval_test(steps):
@@ -611,6 +620,9 @@ _WAIT = re.compile(r"\bwait\w*\b", re.I)
 _REPRESENT = re.compile(r"\b(represent\w*|reflect\w*|who (actually )?visits)\b", re.I)
 _SURVEY = re.compile(r"\b(experienc\w*|rate|rates|rating\w*|satisf\w*|agree\w*|feedback|survey|feel)\b", re.I)
 _ASSOCIATION = re.compile(r"\b(associat\w*|relat\w*|link\w*|connect\w*|correlat\w*|chi[- ]?squared|significan\w*|more likely|less likely|more common|less common|less satisfied|more satisfied)\b", re.I)
+_ADJUSTED = re.compile(r"\b(after (accounting|adjusting|controlling) for|accounting for|controlling for|"
+                       r"adjust\w* for|taking into account|independent(ly)? of|at the same time|"
+                       r"weighed together|regression|odds( ratio)?s?)\b", re.I)
 
 
 def _find_values(question, values):
@@ -635,7 +647,9 @@ def route(question):
     if svc_survey:
         terms.append(svc_survey.replace("_", " ").split()[0][:7])
     # Relationship questions should consult the playbook before choosing a descriptive tool.
-    if _ASSOCIATION.search(q):
+    if _ADJUSTED.search(q):
+        hints.append(("insight_playbook", {"topic_id": "adjusted_association"}))
+    elif _ASSOCIATION.search(q):
         hints.append(("insight_playbook", {"topic_id": "categorical_association"}))
     has_chr = analysis.has_chr(con)
     survey_question = bool(_SURVEY.search(q)) and not _USAGE.search(q.replace("services", ""))

@@ -97,6 +97,11 @@ TOOLS = {
                      "{measure} into a change in which students came and a change within each "
                      "{dimension} group. Also tested whether the number of students changed.",
                      INTERVALS),
+    "survey_changed": ("Survey ratings, same dates compared: {periods}{for_service}", "survey",
+                       "Compared survey responses in the two windows: each service's share of positive "
+                       "ratings, each question, and each student group, with every student counted once.",
+                       "Each comparison is tested, and corrected for the number of questions and groups "
+                       "checked. The survey is anonymous, so the two windows hold different students."),
     "care_journeys": ("What happens after a first visit{for_service}", "chr",
                       "Followed each student's first new episode of care for a fixed period: "
                       "single visits, quick returns, time to a second visit, and coming back "
@@ -116,6 +121,13 @@ TOOLS = {
                        "Checked by re-sampling students 1,000 times; a question is only called a "
                        "priority if it holds up and is clearly more linked than a "
                        "typical question."),
+    "logistic_regression": ("What is linked to agreeing when questions are weighed together{for_service}",
+                            "survey", "For each survey question, estimated how the odds of agreeing "
+                            "with the outcome question change with a one-point higher rating, on its "
+                            "own and with the other questions (and any background groups) taken into "
+                            "account at the same time.",
+                            "Each link has a 95% range of plausible values and is corrected for "
+                            "checking several questions at once. A link is not proof of cause."),
     "term_briefing": ("The term briefing: a fixed set of tested analyses", "both",
                       "Ran the full set of tested analyses across services (change since the same dates "
                       "last year, missed appointments, returning after a first visit, what matters most "

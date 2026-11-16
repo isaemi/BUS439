@@ -290,6 +290,40 @@ use_cases:
   next:
     - What data would let us say whether a group is under-served?
 
+- id: survey_over_time
+  title: Have survey ratings changed, and for whom?
+  status: ready
+  audience: SHW leadership, service managers, equity leads
+  questions:
+    - Has student satisfaction changed since last year?
+    - Are any groups of students rating us worse than they used to?
+    - What has changed in the survey results this term?
+    - Did ratings for counselling improve compared with last fall?
+    - Are students with disabilities rating us differently than before?
+  keywords: [survey changed, satisfaction changed, ratings changed, worse than before, better than before, than they used to, historically, over time, since last year, year over year, improved, declined, trend in ratings]
+  why: >
+    Leaders want to know when a group's experience starts to shift, not a year later. Comparing
+    the same dates a year apart avoids seasonal effects, and testing every question and group
+    with a correction keeps chance movements from being reported.
+  steps:
+    - {tool: survey_changed, purpose: "services, questions and groups whose ratings moved, tested"}
+  read: >
+    Lead with groups_that_changed, then questions_that_changed, each with before and after % agree,
+    the change, and the number of students in each window. Say whether the group moved differently
+    from everyone else. If nothing is listed, say there is no clear change and give
+    smallest_group_change_detectable_pts so the reader knows how big a shift could have been missed.
+  avoid:
+    - Calling a change real when it is not in groups_that_changed or questions_that_changed.
+    - Saying why ratings changed; the two windows hold different students.
+    - Treating "no clear change" for a small group as evidence that nothing changed.
+  say: >
+    "Students reporting a disability rate counselling lower than a year ago: A% then B% (n=N then
+    M), while other students' ratings did not fall." or "No clear change; with this many responses
+    a group's rating would need to move about X points to be detected."
+  next:
+    - What are students saying about that service in their comments?
+    - Do some groups of students rate counselling lower?
+
 - id: survey_weak_spots
   title: Which parts of a service experience matter most, and need attention?
   status: ready
@@ -433,6 +467,42 @@ use_cases:
     - Estimating staffing from appointment counts.
   say: '"We can count students seen; a caseload comparison needs weekly clinical hours."'
   data_gaps: [Weekly clinical hours by service, as used for the Clinical Load Index]
+
+- id: adjusted_association
+  title: Is a part of the experience still linked to the outcome once other factors are weighed?
+  status: ready
+  audience: service managers, survey analysts
+  questions:
+    - Is booking ease still linked to counselling satisfaction after accounting for feeling welcomed?
+    - Are students who feel welcomed more likely to recommend the medical clinic, taking into account how they rated their provider?
+    - Which of these counselling questions matter most for overall satisfaction when weighed together?
+    - Does the link between booking ease and satisfaction depend on session length?
+  keywords: [after accounting for, accounting for, controlling for, adjusted, adjusting for, taking into account, independent of, at the same time, weighed together, regression, odds ratio, odds, interaction, depend on]
+  why: >
+    Survey questions are answered together: a question can look linked to satisfaction only
+    because it moves with another question that is. Logistic regression weighs the questions
+    at the same time, so each odds ratio is the link that remains once the others are taken
+    into account.
+  steps:
+    - {tool: lookup_survey_items, args: {service: counselling}, purpose: verified item codes for the outcome and each question to weigh}
+    - {tool: logistic_regression, args: {service: counselling, outcome_item: "verified outcome code", predictor_items: ["verified codes"]}, purpose: adjusted and unadjusted odds ratios with ranges}
+  read: >
+    Lead with the verdict. For each question with a clear link, give the adjusted odds ratio,
+    its range and n. Compare with the unadjusted odds ratio: a link that disappears once the
+    others are weighed is explained by them. no_clear_links: say no question stands out once
+    they are weighed together. Mention cautions (questions answered almost the same way).
+  avoid:
+    - Saying a question "increases", "drives" or "causes" the outcome; say "linked to N times the odds of agreeing".
+    - Calling an odds ratio a probability or a percentage change.
+    - Putting more questions in than the tool allows; if it declines for too few students, pass that on and suggest fewer questions.
+    - Using it for one pair of questions with nothing to account for; that is test_association.
+  say: >
+    "Weighing the three questions together, students who rated booking ease one point higher
+    had X times the odds of being satisfied (range L to H, n=N). Feeling welcomed was
+    linked on its own, but not once booking ease and session length were taken into account."
+  next:
+    - What matters most to students in counselling?
+    - Do some groups of students rate counselling lower?
 
 - id: categorical_association
   title: Are two categories or survey responses related?

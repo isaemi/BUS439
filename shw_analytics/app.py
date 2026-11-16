@@ -95,7 +95,8 @@ if not config.DB_PATH.exists():
 with analysis.connect() as _db_check:
     _has_survey = bool(_db_check.execute("SELECT COUNT(*) FROM responses").fetchone()[0])
 
-brief_tab, ask_tab, dash_tab, comments_tab = st.tabs(["Briefing", "Ask a question", "Dashboards", "Comments"])
+# The conversation comes first: asking questions is the main way to use the tool.
+ask_tab, brief_tab, dash_tab, comments_tab = st.tabs(["Ask a question", "Briefing", "Dashboards", "Comments"])
 
 
 with brief_tab:
@@ -201,8 +202,9 @@ with ask_tab:
                 st.caption(f"**Graphic {gid}.** {g.caption}")
         else:
             components.html(g.html, height=700, scrolling=True)
-            st.download_button(f"Download Graphic {gid} (report)", g.html,
-                               file_name=f"report_graphic_{gid}.html", mime="text/html",
+            kind = "dashboard" if g.caption.startswith("Dashboard") else "report"
+            st.download_button(f"Download Graphic {gid} ({kind})", g.html,
+                               file_name=f"shw_{kind}_graphic_{gid}.html", mime="text/html",
                                key=f"{key_prefix}_dl_{gid}")
 
     def show_graphics(ids, key_prefix):
@@ -227,8 +229,11 @@ with ask_tab:
         last = st.session_state.turns[-1]
         # One step deeper on what was just found, and (once a briefing exists) a tested finding
         # about the same service that has not come up yet.
-        ideas = followups.suggest_detail(last["trace"], asked=[t["question"] for t in st.session_state.turns],
-                                         history=[t["trace"] for t in st.session_state.turns[:-1]], limit=2)
+        if "ideas" not in last:        # worked out once per answer: some suggestions are checked before they are shown
+            last["ideas"] = followups.suggest_detail(
+                last["trace"], asked=[t["question"] for t in st.session_state.turns],
+                history=[t["trace"] for t in st.session_state.turns[:-1]], limit=2)
+        ideas = last["ideas"]
         if ideas:
             st.caption("Related questions")
             for col, (i, idea) in zip(st.columns(len(ideas)), enumerate(ideas)):
@@ -240,7 +245,8 @@ with ask_tab:
     if st.session_state.turns:
         st.caption(f"Follow-ups use the last {agent.MAX_TURNS} questions as context. "
                    "Start a new conversation to change topic. "
-                   "To combine graphics, type e.g. \"make a report from graphics 1, 3 and 8\".")
+                   "To combine graphics, type e.g. \"make a dashboard from graphics 1, 3 and 8\" "
+                   "(side by side), or \"make a report from...\" (one column, for printing).")
 
     q = st.chat_input("e.g. How did counselling no-shows change from last fall to this fall?" if not _has_survey
                       else "e.g. How does counselling compare for first-generation students?")
@@ -251,8 +257,11 @@ with ask_tab:
         wanted = figures.parse_report_request(q)
         if wanted:  # no model call: the report is plain code
             try:
-                gid = figures.build_report(wanted, store)
-                answer, gids = f"Created Graphic {gid}, a report built from graphics {wanted}.", [gid]
+                kind = figures.report_kind(q)
+                gid = figures.build_report(wanted, store, layout=kind)
+                answer = (f"Created Graphic {gid}, a {kind} of graphics {', '.join(map(str, wanted))}. It is a snapshot of "
+                          "those charts as drawn; download it below to share or print.")
+                gids = [gid]
             except KeyError as e:
                 answer, gids = f"{e.args[0]} Existing graphics: {sorted(store)}.", []
             out = {"answer": answer, "trace": []}

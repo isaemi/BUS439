@@ -319,6 +319,39 @@ def priority_items(service: str):
         return {"error": str(e)}
 
 
+def survey_changed(service: str = None, dimension: str = None, compare: str = "last_year",
+                   window_days: int = 61):
+    from . import survey_trends
+    try:
+        r = survey_trends.survey_changed(_con(), service, dimension, compare, int(window_days))
+    except ValueError as e:
+        return {"error": str(e)}
+    return {**r, "data_source": "Student experience survey, responses in the two windows shown"}
+
+
+def logistic_regression(service: str, outcome_item: str, predictor_items: list,
+                        controls: list = None, interaction: bool = False):
+    """Survey questions weighed together against agreeing with an outcome question."""
+    from . import regression
+    if isinstance(predictor_items, str):
+        predictor_items = [p.strip() for p in re.split(r"[,;]", predictor_items) if p.strip()]
+    if isinstance(controls, str):
+        controls = [c.strip() for c in re.split(r"[,;]", controls) if c.strip()]
+    outcome_code = _verified_item_code(service, outcome_item)
+    codes = [_verified_item_code(service, p) for p in predictor_items or []]
+    if not outcome_code or not codes or not all(codes):
+        unverified = ([outcome_item] if not outcome_code else []) + \
+                     [p for p, c in zip(predictor_items or [], codes) if not c]
+        return {"error": "Survey item not verified. Call lookup_survey_items for this service and "
+                         "choose exact item codes before retrying.",
+                "service": service, "unverified": unverified}
+    try:
+        return regression.logistic_regression(_con(), service, outcome_code, codes,
+                                              controls, bool(interaction))
+    except ValueError as e:
+        return {"error": str(e)}
+
+
 def term_briefing():
     from . import briefing
     try:
@@ -808,7 +841,7 @@ REGISTRY = {"chr_anomalies": chr_anomalies, "lookup_survey_items": lookup_survey
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
-            "explain_difference": explain_difference, "what_changed": what_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "term_briefing": term_briefing, "priority_items": priority_items, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
+            "explain_difference": explain_difference, "what_changed": what_changed, "survey_changed": survey_changed, "care_journeys": care_journeys, "noshow_patterns": noshow_patterns, "service_pathways": service_pathways, "insight_playbook": insight_playbook, "term_briefing": term_briefing, "priority_items": priority_items, "logistic_regression": logistic_regression, "survey_vs_visits": survey_vs_visits, "search_comments": search_comments,
             "comment_overview": comment_overview, "run_sql": run_sql}
 
 
@@ -935,6 +968,33 @@ TOOL_SPECS.append({"type": "function", "function": {
 
 
 TOOL_SPECS.append({"type": "function", "function": {
+    "name": "logistic_regression",
+    "description": (
+        "Weighs several survey questions together for one service (logistic regression, one row "
+        "per student): for each question, the odds ratio of agreeing (4-5) with an outcome question "
+        "per one-point higher rating, on its own and adjusted for the others, with 95% ranges and "
+        "correction for several tests. Optional background groups to account for, and an "
+        "interaction between the first two questions. Use for 'is X still linked to Y after "
+        "accounting for Z', 'which of these matter most when weighed together', 'are students who "
+        "feel welcomed more likely to recommend us'. Call lookup_survey_items first and pass "
+        "verified item codes. Say 'linked to higher odds', never 'causes' or 'increases'."),
+    "parameters": {"type": "object", "properties": {
+        "service": _SVC,
+        "outcome_item": {"type": "string",
+                         "description": "Verified item code of the outcome, e.g. overall satisfaction or recommending."},
+        "predictor_items": {"type": "array", "items": {"type": "string"},
+                            "description": "1-6 verified item codes to weigh together against the outcome."},
+        "controls": {"type": "array", "items": {"type": "string"},
+                     "description": "Optional background questions to account for: academic_level, "
+                                    "year_of_study, enrollment_status, living_arrangement, new_to_ubc, "
+                                    "intl_or_domestic, first_generation, indigenous, racialized, gender, "
+                                    "trans_experience, disability_any."},
+        "interaction": {"type": "boolean",
+                        "description": "Also test whether the first two questions' links depend on each other (default false)."}},
+        "required": ["service", "outcome_item", "predictor_items"]}}})
+
+
+TOOL_SPECS.append({"type": "function", "function": {
     "name": "term_briefing",
     "description": (
         "The term briefing: runs every tested analysis across services (change since the same dates "
@@ -970,3 +1030,25 @@ TOOL_SPECS.append(_fn(
      "scope": {"type": "string", "enum": ["all_weeks", "latest_completed"],
                "description": "Use latest_completed for 'this week' or 'recently'; all_weeks for explicit terms."}},
     []))
+
+
+TOOL_SPECS.append({"type": "function", "function": {
+    "name": "survey_changed",
+    "description": (
+        "Have SURVEY ratings changed over time? Compares the latest window of survey responses with "
+        "the same dates a year earlier (or the window just before): each service's % agree, which "
+        "questions moved, and which student groups now rate a service differently from before, all "
+        "tested and corrected for the number of checks. Use for 'has satisfaction changed', 'are any "
+        "groups rating us worse than they used to', 'what changed in the survey since last year'. "
+        "For appointment measures (no-shows, visits) use what_changed instead."),
+    "parameters": {"type": "object", "properties": {
+        "service": {"type": "string", "description": "Optional: counselling, medical, wellness_adv or info_desk. Omit for all."},
+        "dimension": {"type": "string",
+                      "description": "Optional group to look at, e.g. disability_any, intl_or_domestic, academic_level, "
+                                     "gender. Omit to scan every group the survey records."},
+        "compare": {"type": "string", "enum": ["last_year", "previous"],
+                    "description": "last_year (default, avoids seasonal effects) or the window just before."},
+        "window_days": {"type": "integer",
+                        "description": "Length of each window in days (default 61). Longer windows hold more "
+                                       "responses and can detect smaller changes."}},
+        "required": []}}})

@@ -92,6 +92,66 @@ def test_a_briefing_finding_already_covered_in_the_conversation_is_skipped():
     assert s[1]["text"] == "Which parts of counselling are most closely linked to overall satisfaction?"
 
 
+SURVEY = _step("survey_changed")      # students reporting a disability rate counselling lower than a year ago
+ITEMS = ("item_summary", {"service": "counselling"}, {"rows": [{"item_text": "x", "pct_agree": 40.0}]})
+
+
+def _checks(states):
+    """Run fn with stand-in results for the 'check before offering' step: {tool: result}."""
+    def wrap(fn):
+        real = followups.check
+
+        def fake(c):
+            call = c.get("call")
+            if not call or call[0] not in states:
+                return "unknown"
+            res = states[call[0]]
+            if "error" in res:
+                return "dead_end"
+            return "finding" if (c["expect"](res) if c.get("expect") else followups.has_finding(call[0], res)) else "nothing"
+        followups.check = fake
+        try:
+            return _no_briefing(fn)
+        finally:
+            followups.check = real
+    return wrap
+
+
+def test_suggestions_start_from_the_finding_not_from_whichever_analysis_ran_last():
+    # The answer ran the over-time test (the finding), then a description, then a custom query.
+    answer = [SURVEY, ITEMS, ("run_sql", {"sql": "SELECT 1"}, {"rows": [{"x": 1}]})]
+    s = _checks({})(lambda: followups.suggest(answer))
+    assert all("students reporting a disability" in t for t in s), s
+    assert followups.importance(*SURVEY[::2]) == 3 and followups.importance(*ITEMS[::2]) == 1
+
+
+def test_what_the_answer_just_established_is_not_offered_back():
+    s = _checks({})(lambda: followups.suggest([SURVEY, ITEMS], limit=6))
+    assert not any(t.startswith("Do some groups of students rate") for t in s), s
+
+
+def test_a_suggestion_known_to_lead_somewhere_comes_first_and_a_dead_end_is_dropped():
+    gap = {"by_service": [{"service": "counselling", "gap_pts": -12.0, "significant": True}]}
+    s = _checks({"group_vs_everyone": gap, "survey_changed": {"groups_that_changed": []}})(
+        lambda: followups.suggest_detail([SURVEY]))
+    assert s[0]["text"] == "How do students reporting a disability rate each service compared with other students?"
+    assert s[0]["why"] == "A tested difference shows up here."
+    s = _checks({"group_vs_everyone": {"error": "x"}, "survey_changed": {"error": "no window"}})(
+        lambda: followups.suggest([SURVEY], limit=4))
+    assert not any("each service compared" in t or "other services too" in t for t in s), s
+    assert s and "comments" in s[0]
+
+
+def test_after_a_group_comparison_the_next_question_names_that_group_and_its_weakest_service():
+    step = ("group_vs_everyone", {"dimension": "disability_any", "value": "yes"},
+            {"group": "disability_any = yes", "by_service": [{"service": "medical", "gap_pts": -2.0, "significant": False},
+                                                             {"service": "counselling", "gap_pts": -12.0, "significant": True}]})
+    s = _checks({})(lambda: followups.suggest([step]))
+    assert s[0] == "Has the gap for students reporting a disability in counselling widened since last year?"
+    after = _checks({})(lambda: followups.suggest([step], history=[[SURVEY]]))     # that was already answered
+    assert after[0] == "What are students saying about counselling in their comments?"
+
+
 def test_never_more_than_two_never_a_repeat_never_a_question_already_asked():
     asked = ["Is the October rise in counselling from more students, or more visits each?"]
     s = _no_briefing(lambda: followups.suggest(TRACE, asked=asked))

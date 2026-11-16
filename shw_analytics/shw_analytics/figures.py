@@ -898,6 +898,68 @@ def comment_charts(overview):
     return fig, fig2
 
 
+def _survey_changed(args, r):
+    """Before and after, one row per group or question that moved (or per service when none did)."""
+    span, before, after = _periods(r["periods"])
+    rows = []
+    for g in r.get("groups_that_changed", []):
+        rows.append({**g, "label": _who(g["dimension"], g["group"]), "sub": f"{_service(g, 'service')}, all questions",
+                     "n": (g["respondents_before"], g["respondents_after"]), "hot": True})
+    for q in r.get("questions_that_changed", []):
+        rows.append({**q, "label": _wrap(q["item"], 38), "sub": _service(q, "service"),
+                     "n": (q["students_before"], q["students_after"]), "hot": True})
+    flagged = bool(rows)
+    if not rows:
+        rows = [{**s, "label": _service(s, "service"), "sub": "all questions",
+                 "n": (s["respondents_before"], s["respondents_after"]), "hot": s["verdict"] != "no clear change"}
+                for s in r.get("services", [])]
+    if not rows:
+        return []
+    rows = rows[:MAX_ROWS]
+    fig = _fig(height=_rows_height(len(rows), base=170, per=58), legend=True, left=250)
+    ylab = [f"{x['label']}<br><span style='color:{theme.MUTED}'>{x['sub']}, n={x['n'][0]:,} then {x['n'][1]:,}</span>"
+            for x in rows]
+    for x, y in zip(rows, ylab):
+        fig.add_trace(go.Scatter(x=[x["pct_agree_before"], x["pct_agree_after"]], y=[y, y], mode="lines", showlegend=False,
+                                 line=dict(color=HILITE if x["hot"] else theme.OVERALL, width=4), hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=[x["pct_agree_before"] for x in rows], y=ylab, mode="markers", name=before,
+                             marker=dict(size=12, color="white", line=dict(color=theme.MUTED, width=2)),
+                             hovertemplate="%{x:g}%<extra></extra>"))
+    fig.add_trace(go.Scatter(x=[x["pct_agree_after"] for x in rows], y=ylab, mode="markers", name=after,
+                             marker=dict(size=13, color=[HILITE if x["hot"] else theme.FOCUS for x in rows]),
+                             hovertemplate="%{x:g}%<extra></extra>"))
+    for x, y in zip(rows, ylab):
+        left = x["pct_agree_after"] < x["pct_agree_before"]
+        fig.add_annotation(x=x["pct_agree_after"], y=y, xanchor="right" if left else "left", xshift=-12 if left else 12,
+                           showarrow=False, text=f"<b>{_signed(x['change_pts'])} pts</b>",
+                           font=dict(color=theme.TEXT if x["hot"] else theme.MUTED))
+    vals = [v for x in rows for v in (x["pct_agree_before"], x["pct_agree_after"])]
+    width = max(vals) - min(vals) or 10
+    fig.update_xaxes(title_text="Students agreeing", ticksuffix="%", range=[min(vals) - width * 0.6 - 4, max(vals) + width * 0.6 + 4])
+    fig.update_yaxes(showgrid=False, autorange="reversed")
+    if flagged:
+        top = rows[0]
+        down = top["change_pts"] < 0
+        if "dimension" in top:
+            title = (f"{top['label']} rate {_service(top, 'service').lower()} {abs(top['change_pts']):g} points "
+                     f"{'lower' if down else 'higher'} than a year ago" if before != "Before" else
+                     f"{top['label']} rate {_service(top, 'service').lower()} {abs(top['change_pts']):g} points "
+                     f"{'lower' if down else 'higher'} than before")
+        else:
+            title = f"“{_short(top['item'], 70)}”: {abs(top['change_pts']):g} points {'lower' if down else 'higher'} than {before}"
+        cap = (f"Groups and questions whose ratings moved between the two windows, after correcting for "
+               f"{r.get('tests_run', 'many')} checks. Orange = tested and stands out.")
+    else:
+        title = "No clear change in survey ratings"
+        cap = "No service, question or group moved by more than chance would explain."
+        if r.get("smallest_group_change_detectable_pts"):
+            cap += (f" With this many responses, a group's rating would need to move about "
+                    f"{r['smallest_group_change_detectable_pts']:g} points to be detected.")
+    cap += " The survey is anonymous, so the two windows hold different students. A pattern, not a cause."
+    scope = f"Survey ratings, {span}. Share of students rating 4 or 5; each student counted once"
+    return [_Spec(title, scope, cap, _titled(fig, title, scope), 3 if flagged else 2)]
+
+
 def _briefing(args, r):
     """Charts for the term briefing's findings, titled with each finding's headline."""
     from . import briefing
@@ -1054,7 +1116,7 @@ BUILDERS = {"what_changed": _what_changed, "noshow_patterns": _noshow, "care_jou
             "equity_flags": _equity, "group_vs_everyone": _group_vs, "chr_trend": _trend,
             "chr_summary": _summary, "item_summary": _items, "compare_groups": _compare,
             "service_summary": _services, "wait_time_vs_rating": _wait, "survey_vs_visits": _representation,
-            "term_briefing": _briefing,
+            "term_briefing": _briefing, "survey_changed": _survey_changed,
             "chr_anomalies": _anomalies}
 
 
@@ -1115,10 +1177,19 @@ def split_for_display(ids, store, first=SHOWN_FIRST):
 
 # ---- reports -------------------------------------------------------------------------
 
+_COMBINE = r"\b(report|one-pager|summary|dashboard|handout|document|page|pdf|export)s?\b"
+
+
+def report_kind(text):
+    """'dashboard' (charts side by side) when the request says dashboard, otherwise 'report' (one column)."""
+    return "dashboard" if re.search(r"\bdashboards?\b", text, re.I) else "report"
+
+
 def parse_report_request(text):
-    """'make a report from graphic 1 3 8 and 19' -> [1, 3, 8, 19]. None if not a report request."""
-    if not re.search(r"\b(report|one-pager|summary)\b", text, re.I) or \
-       not re.search(r"\b(graphic|graph|figure|chart)s?\b", text, re.I):
+    """'make a dashboard using graphs 1, 5,6, 8' or 'make a report from graphic 1 3 8 and 19'
+    -> the graphic numbers. None if the message is not asking to combine graphics."""
+    if not re.search(_COMBINE, text, re.I) or \
+       not re.search(r"\b(graphic|graph|figure|chart|plot)s?\b", text, re.I):
         return None
     ids = []
     for a, b in re.findall(r"(\d+)\s*(?:-|to)\s*(\d+)", text):
@@ -1128,8 +1199,13 @@ def parse_report_request(text):
     return list(dict.fromkeys(ids))
 
 
-def build_report(ids, store, title="Student Health and Wellbeing: findings"):
+def build_report(ids, store, title=None, layout="report"):
+    """Combine numbered graphics into one page. layout='report' stacks them in one column (best
+    for printing); layout='dashboard' places them side by side. Either way it is a snapshot of
+    the charts as they were drawn: it does not change when new data is loaded."""
     from .provenance import evidence_cards
+    dashboard = layout == "dashboard"
+    title = title or ("Student Health and Wellbeing: dashboard" if dashboard else "Student Health and Wellbeing: findings")
     missing = [i for i in ids if i not in store or store[i].kind != "chart"]
     if missing:
         raise KeyError(f"No chart with number(s): {missing}")
@@ -1144,7 +1220,9 @@ def build_report(ids, store, title="Student Health and Wellbeing: findings"):
             + f"<p class='cap'>{g.caption}</p>"
             + (f"<p class='how'>How this was worked out: {how}</p>" if how else "") + "</section>")
     css = (f"body{{font-family:{theme.FONT};background:{theme.PAGE};color:{theme.TEXT};margin:0;padding:32px 16px}}"
-           f"main{{max-width:940px;margin:auto}}h1{{color:{theme.NAVY};font-size:28px;margin:0 0 4px}}"
+           f"main{{max-width:{1500 if dashboard else 940}px;margin:auto}}h1{{color:{theme.NAVY};font-size:28px;margin:0 0 4px}}"
+           ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:18px;align-items:start}"
+           ".grid section{margin:0;min-width:0}"
            f".lede{{color:{theme.MUTED};margin:0 0 24px}}section{{background:{theme.CARD};border:1px solid {theme.BORDER};"
            "border-radius:10px;padding:18px 22px 14px;margin:0 0 18px;break-inside:avoid}"
            f".num{{color:{theme.MUTED};font-size:13px;margin:0 0 2px}}.cap{{margin:6px 0 4px;line-height:1.5}}"
@@ -1154,10 +1232,11 @@ def build_report(ids, store, title="Student Health and Wellbeing: findings"):
            "@media print{body{background:white;padding:0}section{border:none;padding:0 0 12px}}")
     html = (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>{title}</title>"
             f"{theme.font_link()}<style>{css}</style></head><body><main>"
-            f"<h1>{title}</h1><p class='lede'>{len(ids)} graphics from the SHW Student Feedback Assistant. "
-            "Each caption says what was measured and how far to trust it.</p>"
-            + "".join(parts) + "</main></body></html>")
+            f"<h1>{title}</h1><p class='lede'>{len(ids)} graphics from the SHW Student Feedback Assistant, as "
+            f"drawn on {pd.Timestamp.now():%-d %B %Y}. Each caption says what was measured and how far to trust it. "
+            "This is a snapshot: it does not change when new data is loaded.</p>"
+            + (f"<div class='grid'>{''.join(parts)}</div>" if dashboard else "".join(parts)) + "</main></body></html>")
     gid = max(store, default=0) + 1
-    store[gid] = Graphic(gid, "report", title, f"Report from graphics {', '.join(map(str, ids))}.",
+    store[gid] = Graphic(gid, "report", title, f"{'Dashboard' if dashboard else 'Report'} from graphics {', '.join(map(str, ids))}.",
                          html=html, source="report", parents=ids, weight=9)
     return gid

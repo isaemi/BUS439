@@ -289,9 +289,31 @@ def write_db(tables, db_path=None):
     con.close()
 
 
-def load(target, db_path=None, chr_dir=None):
+def _survey_responses_in(db_file):
+    """How many survey responses the database at db_file holds now (0 if there is none)."""
+    import duckdb
+    if not db_file.exists():
+        return 0
+    try:
+        con = duckdb.connect(str(db_file), read_only=True)
+    except Exception:
+        return 0
+    try:
+        return int(con.execute("SELECT COUNT(*) FROM responses").fetchone()[0])
+    except Exception:
+        return 0
+    finally:
+        con.close()
+
+
+def load(target, db_path=None, chr_dir=None, chr_only=False):
     """Read one export or a folder of exports, build every table, and swap the new
-    database in only once it is complete (so the app never sees a half-built one)."""
+    database in only once it is complete (so the app never sees a half-built one).
+
+    With no survey export to read, the database is built from appointment records alone
+    (empty survey tables). That is refused when the current database already holds survey
+    responses, because an empty folder or a mistyped path would otherwise remove them
+    without a word. Pass chr_only=True to build an appointments-only database on purpose."""
     import os
     from pathlib import Path
     d = load_dictionary()
@@ -310,6 +332,12 @@ def load(target, db_path=None, chr_dir=None):
         # CHR-only mode: keep empty, typed survey tables for the shared agent/schema
         # utilities. Never invent survey responses or ratings.
         from . import chr as chr_
+        existing = 0 if chr_only else _survey_responses_in(final)
+        if existing:
+            raise ExportFormatError(
+                f"No survey export was found in {target}, and the current database holds {existing:,} survey "
+                "responses. Stopped, so they are not removed. Check the folder, or use --chr-only "
+                "to build a database from appointment records alone.")
         folder = Path(chr_dir) if chr_dir is not None else chr_.CHR_DIR
         if not folder.exists() or not any(folder.glob("*.csv")):
             raise FileNotFoundError("No Qualtrics or CHR CSV exports found.")
@@ -376,9 +404,11 @@ def main():
     ap = argparse.ArgumentParser(description="Load a Qualtrics export, or a folder of them, into DuckDB.")
     ap.add_argument("target", help="a CSV export, or a folder of CSV exports (e.g. data/exports)")
     ap.add_argument("--db", default=None)
+    ap.add_argument("--chr-only", action="store_true",
+                    help="build from appointment records alone, even if the current database holds survey responses")
     a = ap.parse_args()
     try:
-        tables = load(a.target, a.db)
+        tables = load(a.target, a.db, chr_only=a.chr_only)
     except ExportFormatError as e:
         raise SystemExit(f"Export format problem: {e}")
     for k, v in tables.items():

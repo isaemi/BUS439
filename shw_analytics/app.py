@@ -69,14 +69,6 @@ with st.sidebar:
             st.rerun()
         else:
             st.error((r.stderr or r.stdout).strip().splitlines()[-1])
-    #if chr_files and st.button("Rebuild database from existing files"):
-    #    with st.spinner("Rebuilding from saved CSV files..."):
-    #        r = _rebuild()
-    #    if r.returncode == 0:
-    #        st.success("Database updated.")
-    #        st.rerun()
-    #    else:
-    #        st.error((r.stderr or r.stdout).strip().splitlines()[-1])
     if os.getenv("QUALTRICS_API_TOKEN") and st.button("Pull latest from Qualtrics"):
         with st.spinner("Exporting from Qualtrics..."):
             r = subprocess.run([sys.executable, "-m", "shw_analytics.qualtrics_api"],

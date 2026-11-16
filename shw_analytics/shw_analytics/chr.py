@@ -117,7 +117,6 @@ def read_exports(paths, d):
     for col in ("faculty", "academic_level", "program", "gender", "fact_04", "fact_05"):
         v = _text(df, col).str.rstrip(",").str.strip()
         out[col] = v.mask(v == "")
-    #out["age_band"] = _age_band(df.get("age"))
     out["age_band"] = _age_band(df["age"] if "age" in df.columns else pd.Series(np.nan, index=df.index))
     out["term"] = out["start_time"].map(_term)
 

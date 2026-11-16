@@ -163,6 +163,55 @@ def test_chart_text_has_no_internal_names():
     assert not re.search(r"\bp\s*[<=]|q\s*[<=]|Benjamini", text)
 
 
+def test_a_small_service_is_not_flagged_for_ordinary_swings():
+    last, this = [4, 6, 5, 7, 4, 6, 5, 8], [6, 4, 8, 4, 7, 3, 8, 5]         # 50% swings, a handful of appointments
+    df = pd.concat([_term(2025, last), _term(2026, this)], ignore_index=True)
+    without = detect_chr_anomalies(df, term="Fall", year=2026, count_min_appointments=0)
+    assert len(_flags(without)) >= 3                                         # the old behaviour: flagged most weeks
+    r = detect_chr_anomalies(df, term="Fall", year=2026)
+    assert _flags(r) == [] and _flags(r, "active_practitioners") == []
+    assert r["thresholds"]["count_min_appointments"] == 10 and "at least 10 appointments" in r["note"]
+
+
+def test_a_busy_week_falling_to_almost_nothing_is_still_flagged():
+    weeks = list(SHAPE)
+    weeks[3] = 3                                                             # 100 last year, 3 this year
+    r = detect_chr_anomalies(_two_years(weeks), term="Fall", year=2026)
+    assert _flags(r) == [4] and r["anomalies"].iloc[0]["direction"] == "drop"
+
+
+def test_weeks_with_a_handful_of_appointments_are_hidden_but_empty_weeks_are_not():
+    from shw_analytics import tools
+    weekly = pd.DataFrame({"year": [2025, 2025, 2025, 2026, 2026, 2026], "week": [1, 2, 3, 1, 2, 3],
+                           "appointment_volume": [30, 2, 40, 3, 0, 50], "cancellations": [3, 1, 4, 1, 0, 5],
+                           "no_shows": [2, 0, 3, 1, 0, 4], "active_practitioners": [6, 1, 7, 1, 0, 8],
+                           "cancellation_rate": [10.0, 50.0, 10.0, 33.3, None, 10.0],
+                           "no_show_rate": [6.7, 0.0, 7.5, 33.3, None, 8.0], "term": "Fall", "service": "Wellness Advising"})
+    series = {"appointment_volume": {"this_year": [3.0, 0.0, 50.0], "baseline": [30.0, 2.0, 40.0]},
+              "no_show_rate": {"this_year": [33.3, None, 8.0], "baseline": [6.7, 5.0, 7.5]}}
+    out, shown, hidden = tools._hide_small_weeks(weekly, series, [1, 2, 3], [30.0, 2.0, 40.0], min_cell=5)
+    assert hidden == 1                                                       # week 1 of this year (3 appointments)
+    assert "cancellations" not in out.columns and "no_shows" not in out.columns
+    blank = out[out["hidden"]]
+    assert sorted(zip(blank["year"], blank["week"])) == [(2025, 2), (2026, 1)]
+    for col in ("appointment_volume", "active_practitioners", "cancellation_rate", "no_show_rate"):
+        assert blank[col].isna().all()
+    empty = out[(out["year"] == 2026) & (out["week"] == 2)].iloc[0]
+    assert empty["appointment_volume"] == 0 and not empty["hidden"]          # nothing happened: shown
+    assert shown["appointment_volume"] == {"this_year": [None, 0.0, 50.0], "baseline": [30.0, None, 40.0]}
+    assert shown["no_show_rate"] == {"this_year": [None, None, 8.0], "baseline": [6.7, None, 7.5]}
+    assert not any(v is not None and 0 < v < 5 for s in shown.values() for v in s["this_year"] + s["baseline"]
+                   if s is shown["appointment_volume"])
+
+
+def test_chart_says_when_weeks_are_left_blank():
+    r = _tool_result([round(1.4 * n) for n in SHAPE], metric="appointment_volume")
+    r["series"]["appointment_volume"]["this_year"][0] = None
+    r["hidden_weeks"], r["min_cell"] = 1, 5
+    g = _chart(r)
+    assert "1 week with fewer than 5 appointments" in g.caption
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

@@ -25,6 +25,10 @@ COUNT_METRICS = ('appointment_volume', 'active_practitioners')
 # Fewer complete weeks than this and the overall level cannot be told apart from the
 # weeks themselves, so the counts are compared with earlier years as they are.
 MIN_WEEKS_FOR_LEVEL = 4
+# A count is only flagged when the week holds at least this many appointments, this year
+# or in the earlier years it is compared with. Below that, "6 against 4" is a 50% change
+# and ordinary noise, so a small service would be flagged almost every week.
+MIN_APPOINTMENTS_FOR_COUNT_FLAG = 10
 
 
 def overall_level(current, baseline, min_weeks=MIN_WEEKS_FOR_LEVEL):
@@ -75,6 +79,7 @@ def detect_chr_anomalies(
     historical_window: int = 1,
     adjust_for_level: bool = True,
     min_weeks_for_level: int = MIN_WEEKS_FOR_LEVEL,
+    count_min_appointments: int = MIN_APPOINTMENTS_FOR_COUNT_FLAG,
 ) -> dict:
     """Detect anomalies by comparing weeks with the same term in earlier years.
 
@@ -216,7 +221,11 @@ def detect_chr_anomalies(
                 # Protect against divide-by-zero; any count alert needs
                 # a meaningful absolute difference as well.
                 relative = abs(difference) / max(baseline, 1.0)
-                flagged = abs(difference) >= 2 and relative >= count_min_relative_change
+                # Too few appointments either year to tell a change from noise: not flagged.
+                # A busy week falling to nothing still counts, because the earlier year was busy.
+                big_enough = max(float(row.appointment_volume),
+                                 float(same_week['appointment_volume'].median())) >= count_min_appointments
+                flagged = big_enough and abs(difference) >= 2 and relative >= count_min_relative_change
                 measure = 'appointments' if metric == 'appointment_volume' else 'practitioners'
             if flagged:
                 flags.append({
@@ -270,10 +279,12 @@ def detect_chr_anomalies(
         'overall_level': levels,
         'term_start': str(term_start.date()),
         'thresholds': {'count_min_relative_change': count_min_relative_change, 'rate_min_pp': rate_min_pp,
-                       'historical_window': historical_window},
+                       'historical_window': historical_window, 'count_min_appointments': count_min_appointments},
         'note': (f'Rate alerts require a difference of at least {rate_min_pp} percentage points and '
                  f'Benjamini-Hochberg adjusted q < {alpha} across all eligible weekly rate tests. '
                  'Count alerts are operational screening flags, not statistical significance tests. '
+                 f'A count is only flagged in a week with at least {count_min_appointments} appointments, '
+                 'this year or in the earlier years compared. '
                  + ('Counts are compared after allowing for how busy this term is overall against earlier '
                     'years (see overall_level), so a term that is busier throughout is not flagged week after week. '
                     if any(v['applied'] for v in levels.values()) else

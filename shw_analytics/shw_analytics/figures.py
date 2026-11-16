@@ -1104,7 +1104,9 @@ def _anomalies(args, r):
     rates = ("Rates are marked only when the difference is at least "
              f"{(r.get('thresholds') or {}).get('rate_min_pp', 3):g} points and unlikely to be chance. "
              if any(_WEEKLY[m][2] == "rate" for m in metrics) else "")
-    cap = (" ".join(said) + more + " " if said else "No week differed enough from the baseline to be marked. ") + how + rates
+    hidden = (f"{r['hidden_weeks']} week{'s' if r['hidden_weeks'] != 1 else ''} with fewer than {r.get('min_cell', 5)} "
+              "appointments are left blank. " if r.get("hidden_weeks") else "")
+    cap = (" ".join(said) + more + " " if said else "No week differed enough from the baseline to be marked. ") + how + rates + hidden
     cap = cap.strip() + _synthetic(r)
     fig = _titled(fig, title, scope)
     fig.update_layout(margin_t=74, height=fig.layout.height + 36, legend=dict(y=0.995, yanchor="top", yref="container"))

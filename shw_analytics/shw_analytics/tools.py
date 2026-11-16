@@ -725,6 +725,32 @@ TOOL_SPECS = [
         {"sql": {"type": "string"}}, ["sql"]),
 ]
 
+def _hide_small_weeks(weekly, series, weeks, baseline_volume, min_cell=None):
+    """The same small-number rule as the other tools, applied to weeks: a week with 1 to
+    min_cell-1 appointments is blanked everywhere it would appear (the weekly table for
+    every year, and both lines of every chart series), because a rate or a count from
+    so few appointments could point to individual students. A week with no appointments
+    at all stays: zero identifies nobody, and a service falling silent is worth seeing.
+    Raw counts of cancellations and no-shows are never returned; the rates are enough.
+    Returns (weekly, series, hidden) where hidden counts the blanked weeks of the
+    selected year."""
+    min_cell = config.MIN_CELL if min_cell is None else min_cell
+    weekly = weekly.drop(columns=[c for c in ("cancellations", "no_shows") if c in weekly.columns]).copy()
+    vol = pd.to_numeric(weekly["appointment_volume"], errors="coerce")
+    small = (vol > 0) & (vol < min_cell)
+    value_cols = [c for c in weekly.columns if c not in ("term", "year", "week", "service")]
+    weekly[value_cols] = weekly[value_cols].astype(object)
+    weekly.loc[small, value_cols] = None
+    weekly["hidden"] = small.values
+    this_small = {int(w) for w in weekly.loc[small & weekly["year"].eq(weekly["year"].max()), "week"]}
+    base_small = {int(w) for w, v in zip(weeks, baseline_volume) if v is not None and 0 < v < min_cell}
+    out = {}
+    for m, s in series.items():
+        out[m] = {"this_year": [None if w in this_small else v for w, v in zip(weeks, s["this_year"])],
+                  "baseline": [None if w in base_small else v for w, v in zip(weeks, s["baseline"])]}
+    return weekly, out, len(this_small)
+
+
 def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
                   metric: str = None, scope: str = "all_weeks"):
     """Seasonally matched CHR weekly anomaly screening.
@@ -794,10 +820,23 @@ def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
         series[m] = {"this_year": [None if pd.isna(v) else round(float(v), 1) for v in cur],
                      "baseline": [None if pd.isna(v) else round(float(v), 1) for v in b]}
     levels = {m: v for m, v in result["overall_level"].items() if not metric or m == metric}
+    # A week that fell to a handful of appointments is still worth reporting, but not its
+    # exact figure: the flag stays and says "fewer than N".
+    flags = flags.astype({c: object for c in ("observed", "difference", "current_appointments")})
+    tiny = (pd.to_numeric(flags["current_appointments"], errors="coerce") > 0) & \
+           (pd.to_numeric(flags["current_appointments"], errors="coerce") < config.MIN_CELL)
+    flags.loc[tiny, ["observed", "difference", "current_appointments"]] = None
+    flags["figure_hidden"] = [f"fewer than {config.MIN_CELL} appointments that week; exact figures hidden" if t else None
+                              for t in tiny]
     all_flags = flags if not metric else flags.loc[flags["metric"] == metric]
     marked = [{"week": int(f.week), "metric": f.metric, "direction": f.direction,
                "observed": float(f.observed), "baseline": float(f.historical_baseline)}
-              for f in all_flags.itertuples(index=False)]
+              for f in all_flags.itertuples(index=False) if f.observed is not None]
+    # Small numbers are hidden before anything leaves this function.
+    raw_base = base.loc[base["metric"] == "appointment_volume"].set_index("week")["unadjusted_baseline"].reindex(weeks)
+    weekly, series, hidden_weeks = _hide_small_weeks(
+        weekly, series, weeks, [None if pd.isna(v) else float(v) for v in raw_base])
+
     if scope == "latest_completed":
         selected_week = int(result["complete_weeks"])
         flags = flags.loc[flags["week"] == selected_week]
@@ -810,13 +849,15 @@ def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
         core = ["term", "year", "week", "service", "appointment_volume"]
         if metric not in core:
             core.append(metric)
-        weekly = weekly[core]
+        weekly = weekly[core + ["hidden"]]
 
     return {
         "anomalies": json.loads(flags.to_json(orient="records")),
         "weekly": json.loads(weekly.to_json(orient="records")),
         "overall_level": levels,
         "series": series,
+        "hidden_weeks": hidden_weeks,
+        "min_cell": config.MIN_CELL,
         "flagged_in_term": marked,
         "weeks": weeks,
         "week_starts": [str((start + pd.Timedelta(days=7 * (w - 1))).date()) for w in weeks],
@@ -832,6 +873,9 @@ def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
         "note": result["note"] + (
             " Latest completed week only; the current/incomplete week was not tested."
             if scope == "latest_completed" else ""
+        ) + (
+            f" {hidden_weeks} week(s) with fewer than {config.MIN_CELL} appointments are hidden and were not flagged."
+            if hidden_weeks else ""
         ),
         "data_source": source,
     }

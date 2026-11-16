@@ -2,10 +2,16 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-from shw_analytics import (agent, analysis, briefing, charts, config, dashboard, figures, followups,
-                           provenance, theme, tools)
+from shw_analytics import (agent, analysis, bert_gate, briefing, charts, config, dashboard, figures,
+                           followups, provenance, theme, tools)
+
+
+
 
 st.set_page_config(page_title="Student Feedback Assistant | UBC Student Health and Wellbeing", layout="wide")
+@st.cache_resource(show_spinner="Loading the question checker...")
+def _gate_index():
+    return bert_gate.build_column_index(analysis.connect())
 st.markdown(theme.app_css(), unsafe_allow_html=True)
 st.markdown(theme.header_html(
     "Ask about students' experience of our services. Answers come from de-identified survey and "
@@ -49,6 +55,7 @@ with st.sidebar:
             r = _rebuild()
         if r.returncode == 0:
             st.success("Database updated.")
+            _gate_index.clear()
             st.rerun()
         else:
             st.error((r.stderr or r.stdout).strip().splitlines()[-1])
@@ -66,6 +73,7 @@ with st.sidebar:
             r = _rebuild()
         if r.returncode == 0:
             st.success("Database updated.")
+            _gate_index.clear()
             st.rerun()
         else:
             st.error((r.stderr or r.stdout).strip().splitlines()[-1])
@@ -76,6 +84,7 @@ with st.sidebar:
             gc.collect()
         if r.returncode == 0:
             st.success("Pulled and rebuilt.")
+            _gate_index.clear()
             st.rerun()
         else:
             st.error((r.stderr or r.stdout).strip().splitlines()[-1])
@@ -207,6 +216,8 @@ with ask_tab:
         st.chat_message("user").write(t["question"])
         with st.chat_message("assistant"):
             st.write(t["answer"])
+            if t.get("columns"):
+                st.caption("Columns the checker picked: " + ", ".join(c for _, c, _ in t["columns"]))
             show_graphics(t.get("graphics", []), f"h{n}")
             show_trace(t["trace"], f"h{n}")
 
@@ -233,7 +244,15 @@ with ask_tab:
     q = q or st.session_state.pop("pending_q", None)
     if q:
         st.chat_message("user").write(q)
-        n = len(st.session_state.turns)
+        last_q = next((t["question"] for t in reversed(st.session_state.turns) if not t.get("blocked")), "")
+        gate = bert_gate.run(q, _gate_index(), context=last_q)
+        if not gate.allowed:
+            st.session_state.turns.append({
+                "question": q, "trace": [], "graphics": [], "blocked": True,
+                "answer": "I can't run that question because it looks like it contains code or instructions "
+                          "rather than a question about the survey data. Try rephrasing it in plain words."})
+            st.rerun()
+
         wanted = figures.parse_report_request(q)
         if wanted:  # no model call: the report is plain code
             try:
@@ -243,12 +262,13 @@ with ask_tab:
                 answer, gids = f"{e.args[0]} Existing graphics: {sorted(store)}.", []
             out = {"answer": answer, "trace": []}
         else:
+            history = [t for t in st.session_state.turns if not t.get("blocked")]
             with st.spinner("Thinking..."):
-                out = agent.ask(q, history=st.session_state.turns)
+                out = agent.ask(q, history=history, schema_hint=gate.hint)
             gids = figures.register_from_trace(out["trace"], store, answer=out["answer"])
-        st.session_state.turns.append({"question": q, "answer": out["answer"],
-                                       "trace": out["trace"], "graphics": gids})
-        st.rerun()      # redraw from history, so the new answer gets its suggestions and stable controls
+        st.session_state.turns.append({"question": q, "answer": out["answer"], "trace": out["trace"],
+                                       "graphics": gids, "columns": gate.columns})
+        st.rerun()
 
 
 with dash_tab:

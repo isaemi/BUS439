@@ -693,7 +693,7 @@ def _safe_route(question):
         return [], []
 
 
-def ask(question, history=None, max_steps=6, chat_fn=None):
+def ask(question, history=None, max_steps=6, chat_fn=None, schema_hint=""):
     """Returns {"answer": str, "trace": [(tool, args, result), ...], "mode": str}.
     `chat_fn` lets tests inject a fake model."""
     chat_fn = chat_fn or llm.chat
@@ -708,12 +708,12 @@ def ask(question, history=None, max_steps=6, chat_fn=None):
             return _explain_sources(question, prev, chat_fn, ctx)
     if mode in ("native", "auto"):
         try:
-            return _ask_native(question, history, max_steps, chat_fn, trace, ctx)
+            return _ask_native(question, history, max_steps, chat_fn, trace, ctx, schema_hint)
         except BadRequestError as e:
             if mode == "native":
                 raise
             trace.append(("fallback", {}, f"native tool calling rejected: {e}"))
-    return _ask_json(question, history, max_steps, chat_fn, trace, ctx)
+    return _ask_json(question, history, max_steps, chat_fn, trace, ctx, schema_hint)
 
 
 FINAL_NUDGE = ("You have reached the step limit. Answer the question now using only the tool "
@@ -731,13 +731,15 @@ def _call_key(name, args):
     return (name, json.dumps(args, sort_keys=True))
 
 
-def _ask_native(question, history, max_steps, chat_fn, trace, ctx):
+def _ask_native(question, history, max_steps, chat_fn, trace, ctx, schema_hint=""):
     hints, terms = _safe_route(question)
     messages = [{"role": "system", "content": _system(False)}, *_history_messages(history),
                 {"role": "user", "content": question}]
     if hints:
         messages.append({"role": "system", "content": _hint_message(hints)})
         trace.append(("suggested", {"calls": [n for n, _ in hints]}, {"hints": [{"tool": n, "args": a} for n, a in hints]}))
+    if schema_hint:
+        messages.append({"role": "system", "content": schema_hint})
     nudged = retried = handed_off = coded = drifted = direction_checked = False
     empties = 0
     seen = {}
@@ -812,12 +814,14 @@ def _ask_native(question, history, max_steps, chat_fn, trace, ctx):
             "trace": trace, "mode": "native"}
 
 
-def _ask_json(question, history, max_steps, chat_fn, trace, ctx):
+def _ask_json(question, history, max_steps, chat_fn, trace, ctx, schema_hint=""):
     hints, terms = _safe_route(question)
     messages = [{"role": "system", "content": _system(True)}, *_history_messages(history),
                 {"role": "user", "content": question}]
     if hints:
         messages.append({"role": "system", "content": _hint_message(hints)})
+    if schema_hint:
+        messages.append({"role": "system", "content": schema_hint})
     nudged = retried = handed_off = coded = direction_checked = False
     seen = {}
     for _ in range(max_steps):

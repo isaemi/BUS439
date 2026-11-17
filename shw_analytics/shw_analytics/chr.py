@@ -96,8 +96,8 @@ def read_exports(paths, d):
         "appointment_key": _hash(df["appointment_id"], "A", salt),
         "student_key": _hash(df["patient_id"], "S", salt),
         "provider_key": _hash(_text(df, "practitioner"), "P", salt, 6),
-        "start_time": pd.to_datetime(df["start_time"], errors="coerce"),
-        "end_time": pd.to_datetime(df.get("end_time"), errors="coerce"),
+        "start_time": pd.to_datetime(df["start_time"], format="mixed", errors="coerce"),
+        "end_time": pd.to_datetime(df.get("end_time"), format="mixed", errors="coerce"),
     })
     svc = pd.DataFrame([parse_service(t) for t in df["service_raw"]], index=df.index)
     out = pd.concat([out, svc], axis=1)
@@ -117,7 +117,7 @@ def read_exports(paths, d):
     for col in ("faculty", "academic_level", "program", "gender", "fact_04", "fact_05"):
         v = _text(df, col).str.rstrip(",").str.strip()
         out[col] = v.mask(v == "")
-    out["age_band"] = _age_band(df.get("age"))
+    out["age_band"] = _age_band(df["age"] if "age" in df.columns else pd.Series(np.nan, index=df.index))
     out["term"] = out["start_time"].map(_term)
 
     dupes = out["appointment_key"].duplicated(keep="last")

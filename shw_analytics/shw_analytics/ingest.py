@@ -289,26 +289,107 @@ def write_db(tables, db_path=None):
     con.close()
 
 
-def load(target, db_path=None, chr_dir=None):
+def _survey_responses_in(db_file):
+    """How many survey responses the database at db_file holds now (0 if there is none)."""
+    import duckdb
+    if not db_file.exists():
+        return 0
+    try:
+        con = duckdb.connect(str(db_file), read_only=True)
+    except Exception:
+        return 0
+    try:
+        return int(con.execute("SELECT COUNT(*) FROM responses").fetchone()[0])
+    except Exception:
+        return 0
+    finally:
+        con.close()
+
+
+def load(target, db_path=None, chr_dir=None, chr_only=False):
     """Read one export or a folder of exports, build every table, and swap the new
-    database in only once it is complete (so the app never sees a half-built one)."""
+    database in only once it is complete (so the app never sees a half-built one).
+
+    With no survey export to read, the database is built from appointment records alone
+    (empty survey tables). That is refused when the current database already holds survey
+    responses, because an empty folder or a mistyped path would otherwise remove them
+    without a word. Pass chr_only=True to build an appointments-only database on purpose."""
     import os
     from pathlib import Path
     d = load_dictionary()
-    df, texts = read_many(resolve_paths(target))
-    check_format(df, d)
-    tables = build_tables(df.drop(columns="_source"), texts, d)
+    survey_paths = [p for p in resolve_paths(target) if p.is_file()]
     final = Path(db_path) if db_path else config.DB_PATH
+    final.parent.mkdir(parents=True, exist_ok=True)
     tmp = final.with_suffix(".building.duckdb")
     tmp.unlink(missing_ok=True)
-    write_db(tables, tmp)
+    if survey_paths:
+        # Unchanged Qualtrics ingestion path, including validation and all survey tables.
+        df, texts = read_many(survey_paths)
+        check_format(df, d)
+        tables = build_tables(df.drop(columns="_source"), texts, d)
+        write_db(tables, tmp)
+    else:
+        # CHR-only mode: keep empty, typed survey tables for the shared agent/schema
+        # utilities. Never invent survey responses or ratings.
+        from . import chr as chr_
+        existing = 0 if chr_only else _survey_responses_in(final)
+        if existing:
+            raise ExportFormatError(
+                f"No survey export was found in {target}, and the current database holds {existing:,} survey "
+                "responses. Stopped, so they are not removed. Check the folder, or use --chr-only "
+                "to build a database from appointment records alone.")
+        folder = Path(chr_dir) if chr_dir is not None else chr_.CHR_DIR
+        if not folder.exists() or not any(folder.glob("*.csv")):
+            raise FileNotFoundError("No Qualtrics or CHR CSV exports found.")
+        con = duckdb.connect(str(tmp))
+        try:
+            con.execute("""CREATE TABLE responses (
+                response_id VARCHAR, recorded_at TIMESTAMP, channel VARCHAR,
+                finished BOOLEAN, progress DOUBLE, service_code INTEGER,
+                service VARCHAR, service_name VARCHAR, birth_year INTEGER)""")
+            # The agent inspects response categories; preserve known dimension names.
+            response_cols = set(r[1] for r in con.execute("PRAGMA table_info('responses')").fetchall())
+            for meta in list(d.get("demographics", {}).values()) + list(d.get("followups", {}).values()):
+                col = meta["name"]
+                if col not in response_cols:
+                    con.execute('ALTER TABLE responses ADD COLUMN "' + col.replace('"', '""') + '" VARCHAR')
+                    response_cols.add(col)
+            for cb in d.get("checkbox", {}).values():
+                derived = cb.get("derive", {}).get("name")
+                if derived and derived not in response_cols:
+                    con.execute('ALTER TABLE responses ADD COLUMN "' + derived.replace('"', '""') + '" VARCHAR')
+                    response_cols.add(derived)
+            con.execute("""CREATE TABLE ratings (response_id VARCHAR, service VARCHAR,
+                item_code VARCHAR, score INTEGER, agree BOOLEAN, item_text VARCHAR)""")
+            con.execute("""CREATE TABLE items (service VARCHAR, block VARCHAR,
+                item_code VARCHAR, item_text VARCHAR, duplicate_of VARCHAR)""")
+            con.execute("""CREATE TABLE comments (response_id VARCHAR, service VARCHAR,
+                question_code VARCHAR, text VARCHAR)""")
+            con.execute("CREATE TABLE response_faculty (response_id VARCHAR, faculty VARCHAR)")
+            con.execute("CREATE TABLE response_disability (response_id VARCHAR, disability VARCHAR)")
+            con.execute("CREATE TABLE response_multi (response_id VARCHAR, question VARCHAR, value VARCHAR)")
+            con.execute("CREATE TABLE data_quality (issue VARCHAR, detail VARCHAR, count BIGINT)")
+            con.execute("""CREATE VIEW ratings_demo AS
+                SELECT r.*, s.* EXCLUDE (response_id, service)
+                FROM ratings r JOIN responses s USING (response_id)""")
+        finally:
+            con.close()
+        tables = {"data_quality": pd.DataFrame(columns=["issue", "detail", "count"])}
     # CHR appointment exports, if any, go into the same database before the swap.
-    import duckdb
+
     from . import chr as chr_
     con = duckdb.connect(str(tmp))
     chr_issues = chr_.add_tables(con, d, chr_dir or chr_.CHR_DIR)
+    if not survey_paths and not bool(con.execute("SELECT COUNT(*) FROM duckdb_tables() WHERE table_name = 'appointments'").fetchone()[0]):
+        con.close()
+        tmp.unlink(missing_ok=True)
+        raise ValueError("CHR files did not produce any valid appointment rows.")
     if chr_issues:
         dq = pd.concat([tables["data_quality"], pd.DataFrame(chr_issues)], ignore_index=True)
+
+        # Finish any pending DuckDB result before registering a DataFrame.
+        con.execute("SELECT 1").fetchall()
+
         con.register("tmp_dq", dq)
         con.execute("CREATE OR REPLACE TABLE data_quality AS SELECT * FROM tmp_dq")
         tables["data_quality"] = dq
@@ -323,9 +404,11 @@ def main():
     ap = argparse.ArgumentParser(description="Load a Qualtrics export, or a folder of them, into DuckDB.")
     ap.add_argument("target", help="a CSV export, or a folder of CSV exports (e.g. data/exports)")
     ap.add_argument("--db", default=None)
+    ap.add_argument("--chr-only", action="store_true",
+                    help="build from appointment records alone, even if the current database holds survey responses")
     a = ap.parse_args()
     try:
-        tables = load(a.target, a.db)
+        tables = load(a.target, a.db, chr_only=a.chr_only)
     except ExportFormatError as e:
         raise SystemExit(f"Export format problem: {e}")
     for k, v in tables.items():

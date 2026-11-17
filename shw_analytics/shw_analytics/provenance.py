@@ -84,6 +84,14 @@ TOOLS = {
     "comment_overview": ("Themes in students' comments{for_service}", "comments",
                          "Counted comments by theme and tone, using automatic labelling.",
                          "Automatic labels can be wrong for individual comments."),
+    "chr_anomalies": ("Weeks that stand out from earlier years{for_service}", "chr",
+                      "Compared each complete week of the term with the same weeks of the same term "
+                      "in earlier years: appointments, practitioners seeing students, and the "
+                      "no-show and cancellation rates. Appointment and practitioner counts are "
+                      "compared after allowing for how busy the term is overall.",
+                      "Rates are marked only when the difference is at least 3 points and unlikely "
+                      "to be chance. Count marks are a screening rule (30% or more from the "
+                      "baseline), not a statistical test."),
     "what_changed": ("Same dates compared: {periods}{for_service}", "chr",
                      "Compared the same dates in both periods, and split the change in "
                      "{measure} into a change in which students came and a change within each "

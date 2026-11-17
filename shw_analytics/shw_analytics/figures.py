@@ -7,6 +7,7 @@ Each kind of analysis gets the chart that shows its finding, not a generic bar c
   care_journeys     what happens after a first visit; single visits by group
   priority_items    importance vs score quadrant ("fix first")
   service_pathways  share moving to another service, with ranges
+  chr_anomalies     this year's weeks over the baseline from earlier years, unusual weeks marked
   ...and the descriptive tools (trends, breakdowns, survey questions, group comparisons).
 
 Rules every chart follows, so staff can read one without a legend lesson:
@@ -970,12 +971,155 @@ def _briefing(args, r):
     return out
 
 
+# ---- unusual weeks ------------------------------------------------------------------
+
+_WEEKLY = {"appointment_volume": ("Appointments", "appointments", "count"),
+           "active_practitioners": ("Practitioners seeing students", "practitioners", "count"),
+           "no_show_rate": ("No-show rate", "no-show rate", "rate"),
+           "cancellation_rate": ("Cancellation rate", "cancellation rate", "rate")}
+
+
+def _week_range(start, week):
+    a = pd.Timestamp(start) + pd.Timedelta(days=7 * (week - 1))
+    return f"{_day(a)} to {_day(a + pd.Timedelta(days=6))}"
+
+
+def _vs_baseline(metric, observed, baseline):
+    """'+38%' for a count, '+6 pts' for a rate."""
+    if _WEEKLY[metric][2] == "rate":
+        return f"{_signed(round(observed - baseline, 1))} pts"
+    return f"{_signed(round(100 * (observed - baseline) / baseline))}%" if baseline else _signed(round(observed - baseline))
+
+
+def _anomalies(args, r):
+    """This year's weeks as a solid line over the baseline they were compared with (dashed),
+    one small panel per measure, with the weeks that stood out marked and labelled."""
+    series, weeks = r.get("series") or {}, r.get("weeks") or []
+    metrics = [m for m in _WEEKLY if m in series and any(v is not None for v in series[m]["this_year"])]
+    if not metrics or len(weeks) < 2:
+        return []
+    svc = "All services" if str(r.get("service_scope", "")).lower().startswith("all") else _service({"service": r.get("service_scope")})
+    term, year = r.get("term"), r.get("year")
+    this, earlier = f"{term} {year}", " and ".join(f"{term} {y}" for y in r.get("historical_years", []))
+    starts = r.get("week_starts") or []
+    start = starts[0] if starts else None
+    flags = r.get("flagged_in_term") or r.get("anomalies") or []
+    flags = [{**f, "baseline": f.get("baseline", f.get("historical_baseline"))} for f in flags if f.get("metric") in metrics]
+    levels = r.get("overall_level") or {}
+    band = (r.get("thresholds") or {}).get("count_min_relative_change", 0.30)
+
+    heads = []
+    for m in metrics:
+        lv = levels.get(m) or {}
+        note = ""
+        if _WEEKLY[m][2] == "count" and lv.get("applied") and abs(lv.get("percent_vs_earlier_years") or 0) >= 1:
+            note = (f"  <span style='color:{theme.MUTED}'>baseline raised to this term's overall level "
+                    f"({_signed(round(lv['percent_vs_earlier_years']))}%)</span>").replace("raised", "raised" if lv["factor"] > 1 else "lowered")
+        heads.append(f"<b>{_WEEKLY[m][0]} per week</b>{note}")
+    fig = make_subplots(rows=len(metrics), cols=1, shared_xaxes=True, subplot_titles=heads,
+                        vertical_spacing=min(0.12, 0.34 / max(len(metrics), 1)))
+    fig.update_layout(_fig(height=150 + 190 * len(metrics), legend=True).layout)
+    fig.update_xaxes(gridcolor=theme.GRID, zeroline=False, linecolor=theme.BORDER, ticks="",
+                     tickfont=dict(color=theme.MUTED), title_font=dict(color=theme.MUTED, size=12))
+    fig.update_yaxes(gridcolor=theme.GRID, zeroline=False, linecolor=theme.BORDER, ticks="",
+                     tickfont=dict(color=theme.MUTED), automargin=True)
+    for a in fig.layout.annotations:                       # panel headings: left, not centred
+        a.update(x=0, xanchor="left", font=dict(size=13, color=theme.TEXT))
+
+    for i, m in enumerate(metrics, start=1):
+        kind, first = _WEEKLY[m][2], i == 1
+        cur, base = series[m]["this_year"], series[m]["baseline"]
+        unit = "%" if kind == "rate" else ""
+        if kind == "count" and any(b is not None for b in base):
+            lo = [None if b is None else b * (1 - band) for b in base]
+            hi = [None if b is None else b * (1 + band) for b in base]
+            fig.add_trace(go.Scatter(x=weeks, y=lo, mode="lines", line=dict(width=0), hoverinfo="skip",
+                                     showlegend=False), row=i, col=1)
+            fig.add_trace(go.Scatter(x=weeks, y=hi, mode="lines", line=dict(width=0), fill="tonexty",
+                                     fillcolor="rgba(154,169,187,0.18)", hoverinfo="skip", legendgroup="band",
+                                     name=f"Usual range (within {round(100 * band)}% of the baseline)",
+                                     showlegend=m == next(x for x in metrics if _WEEKLY[x][2] == "count")), row=i, col=1)
+        fig.add_trace(go.Scatter(x=weeks, y=base, mode="lines", name=f"Baseline from {earlier}" if earlier else "Baseline",
+                                 legendgroup="base", showlegend=first, connectgaps=False,
+                                 line=dict(color=QUIET, width=2, dash="dash"),
+                                 hovertemplate="Week %{x} baseline: %{y:,.1f}" + unit + "<extra></extra>"), row=i, col=1)
+        fig.add_trace(go.Scatter(x=weeks, y=cur, mode="lines+markers", name=this, legendgroup="this", showlegend=first,
+                                 line=dict(color=theme.FOCUS, width=3), marker=dict(size=6, color=theme.FOCUS),
+                                 hovertemplate="Week %{x}: %{y:,.1f}" + unit + "<extra></extra>"), row=i, col=1)
+        hot = sorted((f for f in flags if f["metric"] == m), key=lambda f: f["week"])
+        if hot:
+            wordy = len(hot) <= 3
+            text = [(f"Unusual {f['direction']}<br>" if wordy else "") + f"<b>{_vs_baseline(m, f['observed'], f['baseline'])}</b>"
+                    for f in hot]
+            fig.add_trace(go.Scatter(
+                x=[f["week"] for f in hot], y=[f["observed"] for f in hot], mode="markers+text", name="Unusual week",
+                legendgroup="hot", showlegend=m == next(x for x in metrics if any(f["metric"] == x for f in flags)),
+                marker=dict(size=14, color=HILITE, line=dict(color="white", width=2)), text=text,
+                textposition=["top center" if f["direction"] == "spike" else "bottom center" for f in hot],
+                textfont=dict(color=theme.TEXT, size=12), cliponaxis=False, hoverinfo="skip"), row=i, col=1)
+        vals = [v for v in cur + base if v is not None]
+        top = max(vals) if vals else 1
+        fig.update_yaxes(range=[0, top * 1.45], ticksuffix=unit, nticks=4, row=i, col=1)
+        fig.update_xaxes(showgrid=False, row=i, col=1)
+    if r.get("selected_week"):
+        fig.add_vrect(x0=r["selected_week"] - 0.5, x1=r["selected_week"] + 0.5, fillcolor=theme.ALERT_BG["info"],
+                      opacity=0.6, line_width=0, layer="below")
+    fig.update_xaxes(dtick=1, title_text=f"Week of term (week 1 starts {_day(pd.Timestamp(start))})" if start else "Week of term",
+                     row=len(metrics), col=1)
+
+    vol = levels.get("appointment_volume") or {}
+    level = ""
+    if "appointment_volume" in metrics and vol.get("applied") and vol.get("notable"):
+        pct = round(vol["percent_vs_earlier_years"])
+        level = f"appointments are running about {abs(pct)}% {'above' if pct > 0 else 'below'} {earlier} throughout"
+    n_weeks = len({f["week"] for f in flags})
+    latest = r.get("selected_week")
+    if latest:
+        here = [f for f in flags if f["week"] == latest]
+        others = len({f["week"] for f in flags if f["week"] != latest})
+        when = f"the latest complete week ({_week_range(start, latest)})" if start else "the latest complete week"
+        what = " and ".join(f"{_WEEKLY[f['metric']][1]} ({'high' if f['direction'] == 'spike' else 'low'})" for f in here)
+        title = (f"{svc}: {when} stands out for {what}" if here else f"{svc}: {when} does not stand out")
+        title += f"; {others} earlier week{'s' if others != 1 else ''} this term {'do' if others != 1 else 'does'}" if others and not here else ""
+    elif n_weeks:
+        title = f"{svc}, {this}: {n_weeks} of {len(weeks)} weeks stand out" + (f"; {level}" if level else "")
+    else:
+        title = f"{svc}, {this}: no week stands out" + (f", though {level}" if level else "")
+    scope = (f"Each complete week of {this} against the same weeks of {earlier}. Orange = unusual week"
+             + (f". Shaded = within {round(100 * band)}% of the baseline" if any(_WEEKLY[m][2] == "count" for m in metrics) else "")
+             + (". Blue column = latest complete week" if r.get("selected_week") else ""))
+    said = []
+    for f in sorted(flags, key=lambda f: (f["week"], f["metric"]))[:4]:
+        u = "%" if _WEEKLY[f["metric"]][2] == "rate" else ""
+        when = f"Week {f['week']}" + (f" ({_week_range(start, f['week'])})" if start else "")
+        said.append(f"{when}: {_WEEKLY[f['metric']][1]} {f['observed']:,.0f}{u} against about {f['baseline']:,.0f}{u} "
+                    f"({_vs_baseline(f['metric'], f['observed'], f['baseline'])}).")
+    more = f" And {len(flags) - 4} more." if len(flags) > 4 else ""
+    adj = [m for m in metrics if _WEEKLY[m][2] == "count" and (levels.get(m) or {}).get("applied")]
+    how = ("Appointment and practitioner counts are compared with earlier years after allowing for how busy this "
+           "term is overall, so a term that is busier throughout is not marked week after week; these marks are a "
+           "screening rule, not a statistical test. " if adj else
+           "Appointment and practitioner counts are compared with earlier years as they are; these marks are a "
+           "screening rule, not a statistical test. " if any(_WEEKLY[m][2] == "count" for m in metrics) else "")
+    rates = ("Rates are marked only when the difference is at least "
+             f"{(r.get('thresholds') or {}).get('rate_min_pp', 3):g} points and unlikely to be chance. "
+             if any(_WEEKLY[m][2] == "rate" for m in metrics) else "")
+    hidden = (f"{r['hidden_weeks']} week{'s' if r['hidden_weeks'] != 1 else ''} with fewer than {r.get('min_cell', 5)} "
+              "appointments are left blank. " if r.get("hidden_weeks") else "")
+    cap = (" ".join(said) + more + " " if said else "No week differed enough from the baseline to be marked. ") + how + rates + hidden
+    cap = cap.strip() + _synthetic(r)
+    fig = _titled(fig, title, scope)
+    fig.update_layout(margin_t=74, height=fig.layout.height + 36, legend=dict(y=0.995, yanchor="top", yref="container"))
+    return [_Spec(title, scope, cap, fig, 3 if flags else 2)]
+
+
 BUILDERS = {"what_changed": _what_changed, "noshow_patterns": _noshow, "care_journeys": _care,
             "service_pathways": _pathways, "priority_items": _priorities, "explain_difference": _explain,
             "equity_flags": _equity, "group_vs_everyone": _group_vs, "chr_trend": _trend,
             "chr_summary": _summary, "item_summary": _items, "compare_groups": _compare,
             "service_summary": _services, "wait_time_vs_rating": _wait, "survey_vs_visits": _representation,
-            "term_briefing": _briefing, "survey_changed": _survey_changed}
+            "term_briefing": _briefing, "survey_changed": _survey_changed,
+            "chr_anomalies": _anomalies}
 
 
 # ---- registry ------------------------------------------------------------------------

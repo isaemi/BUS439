@@ -725,7 +725,163 @@ TOOL_SPECS = [
         {"sql": {"type": "string"}}, ["sql"]),
 ]
 
-REGISTRY = {"lookup_survey_items": lookup_survey_items, "demographic_association": demographic_association, "test_association": test_association, "chr_categorical_association": chr_categorical_association, "describe_data": describe_data, "service_summary": service_summary,
+def _hide_small_weeks(weekly, series, weeks, baseline_volume, min_cell=None):
+    """The same small-number rule as the other tools, applied to weeks: a week with 1 to
+    min_cell-1 appointments is blanked everywhere it would appear (the weekly table for
+    every year, and both lines of every chart series), because a rate or a count from
+    so few appointments could point to individual students. A week with no appointments
+    at all stays: zero identifies nobody, and a service falling silent is worth seeing.
+    Raw counts of cancellations and no-shows are never returned; the rates are enough.
+    Returns (weekly, series, hidden) where hidden counts the blanked weeks of the
+    selected year."""
+    min_cell = config.MIN_CELL if min_cell is None else min_cell
+    weekly = weekly.drop(columns=[c for c in ("cancellations", "no_shows") if c in weekly.columns]).copy()
+    vol = pd.to_numeric(weekly["appointment_volume"], errors="coerce")
+    small = (vol > 0) & (vol < min_cell)
+    value_cols = [c for c in weekly.columns if c not in ("term", "year", "week", "service")]
+    weekly[value_cols] = weekly[value_cols].astype(object)
+    weekly.loc[small, value_cols] = None
+    weekly["hidden"] = small.values
+    this_small = {int(w) for w in weekly.loc[small & weekly["year"].eq(weekly["year"].max()), "week"]}
+    base_small = {int(w) for w, v in zip(weeks, baseline_volume) if v is not None and 0 < v < min_cell}
+    out = {}
+    for m, s in series.items():
+        out[m] = {"this_year": [None if w in this_small else v for w, v in zip(weeks, s["this_year"])],
+                  "baseline": [None if w in base_small else v for w, v in zip(weeks, s["baseline"])]}
+    return weekly, out, len(this_small)
+
+
+def chr_anomalies(term: str = None, year: int = None, service_line: str = None,
+                  metric: str = None, scope: str = "all_weeks"):
+    """Seasonally matched CHR weekly anomaly screening.
+
+    When the period is omitted, use the latest period in the CHR export.
+    latest_completed returns only the last complete week, never an incomplete week.
+    """
+    from .anomaly_detection import detect_chr_anomalies, METRICS
+    if metric and metric not in METRICS:
+        return {"error": f"Unknown metric: {metric}. Choose from {', '.join(METRICS)}"}
+    if scope not in ("all_weeks", "latest_completed"):
+        return {"error": "scope must be all_weeks or latest_completed"}
+    if (term is None) != (year is None):
+        return {"error": "Supply both term and year, or omit both to use the latest CHR period."}
+
+    con, err = _need_chr()
+    if err:
+        return err
+    try:
+        df = con.execute(
+            "SELECT start_time, outcome, service_line, provider_key FROM appointments"
+        ).df()
+        source = _chr_source(con)
+    finally:
+        con.close()
+
+    if df.empty:
+        return {"error": "No CHR appointments are available."}
+    df["start_time"] = pd.to_datetime(df["start_time"], errors="coerce")
+    df = df.loc[df["start_time"].notna()]
+    if df.empty:
+        return {"error": "No valid CHR appointment dates are available."}
+
+    if service_line:
+        available = df.loc[
+            df["service_line"].astype("string").str.casefold() == service_line.casefold()
+        ]
+        if available.empty:
+            return {"error": f"No CHR appointments found for service: {service_line}"}
+    else:
+        available = df
+
+    latest_date = available["start_time"].max().normalize()
+    if term is None:
+        month = latest_date.month
+        term = "Winter" if month <= 4 else "Summer" if month <= 8 else "Fall"
+        year = int(latest_date.year)
+
+    try:
+        result = detect_chr_anomalies(df, term=term, year=int(year), service=service_line)
+    except (ValueError, TypeError) as exc:
+        return {"error": str(exc), "latest_data_date": str(latest_date.date())}
+
+    flags = result["anomalies"]
+    weekly = result["weekly"]
+
+    # The whole term for the chart (this year against the baseline each week was compared
+    # with), whatever the scope: one week on its own cannot be read as unusual or not.
+    weeks = list(range(1, int(result["complete_weeks"]) + 1))
+    start = pd.Timestamp(result["term_start"])
+    this_year = weekly.loc[weekly["year"] == int(year)].set_index("week")
+    base = result["baseline"]
+    series = {}
+    for m in ([metric] if metric else list(METRICS)):
+        b = base.loc[base["metric"] == m].set_index("week")["baseline"].reindex(weeks)
+        cur = this_year[m].reindex(weeks)
+        series[m] = {"this_year": [None if pd.isna(v) else round(float(v), 1) for v in cur],
+                     "baseline": [None if pd.isna(v) else round(float(v), 1) for v in b]}
+    levels = {m: v for m, v in result["overall_level"].items() if not metric or m == metric}
+    # A week that fell to a handful of appointments is still worth reporting, but not its
+    # exact figure: the flag stays and says "fewer than N".
+    flags = flags.astype({c: object for c in ("observed", "difference", "current_appointments")})
+    tiny = (pd.to_numeric(flags["current_appointments"], errors="coerce") > 0) & \
+           (pd.to_numeric(flags["current_appointments"], errors="coerce") < config.MIN_CELL)
+    flags.loc[tiny, ["observed", "difference", "current_appointments"]] = None
+    flags["figure_hidden"] = [f"fewer than {config.MIN_CELL} appointments that week; exact figures hidden" if t else None
+                              for t in tiny]
+    all_flags = flags if not metric else flags.loc[flags["metric"] == metric]
+    marked = [{"week": int(f.week), "metric": f.metric, "direction": f.direction,
+               "observed": float(f.observed), "baseline": float(f.historical_baseline)}
+              for f in all_flags.itertuples(index=False) if f.observed is not None]
+    # Small numbers are hidden before anything leaves this function.
+    raw_base = base.loc[base["metric"] == "appointment_volume"].set_index("week")["unadjusted_baseline"].reindex(weeks)
+    weekly, series, hidden_weeks = _hide_small_weeks(
+        weekly, series, weeks, [None if pd.isna(v) else float(v) for v in raw_base])
+
+    if scope == "latest_completed":
+        selected_week = int(result["complete_weeks"])
+        flags = flags.loc[flags["week"] == selected_week]
+        weekly = weekly.loc[weekly["week"] == selected_week]
+    else:
+        selected_week = None
+
+    if metric:
+        flags = flags.loc[flags["metric"] == metric]
+        core = ["term", "year", "week", "service", "appointment_volume"]
+        if metric not in core:
+            core.append(metric)
+        weekly = weekly[core + ["hidden"]]
+
+    return {
+        "anomalies": json.loads(flags.to_json(orient="records")),
+        "weekly": json.loads(weekly.to_json(orient="records")),
+        "overall_level": levels,
+        "series": series,
+        "hidden_weeks": hidden_weeks,
+        "min_cell": config.MIN_CELL,
+        "flagged_in_term": marked,
+        "weeks": weeks,
+        "week_starts": [str((start + pd.Timedelta(days=7 * (w - 1))).date()) for w in weeks],
+        "thresholds": result["thresholds"],
+        "historical_years": result["historical_years"],
+        "complete_weeks": result["complete_weeks"],
+        "selected_week": selected_week,
+        "scope": scope,
+        "term": term,
+        "year": int(year),
+        "latest_data_date": str(latest_date.date()),
+        "service_scope": service_line or "All services combined",
+        "note": result["note"] + (
+            " Latest completed week only; the current/incomplete week was not tested."
+            if scope == "latest_completed" else ""
+        ) + (
+            f" {hidden_weeks} week(s) with fewer than {config.MIN_CELL} appointments are hidden and were not flagged."
+            if hidden_weeks else ""
+        ),
+        "data_source": source,
+    }
+
+
+REGISTRY = {"chr_anomalies": chr_anomalies, "lookup_survey_items": lookup_survey_items, "demographic_association": demographic_association, "test_association": test_association, "chr_categorical_association": chr_categorical_association, "describe_data": describe_data, "service_summary": service_summary,
             "item_summary": item_summary, "compare_groups": compare_groups,
             "equity_flags": equity_flags, "wait_time_vs_rating": wait_time_vs_rating,
             "group_vs_everyone": group_vs_everyone, "chr_summary": chr_summary, "chr_trend": chr_trend,
@@ -892,6 +1048,32 @@ TOOL_SPECS.append({"type": "function", "function": {
         "'what should we know', 'headline findings', 'what should leadership know', 'anything "
         "surprising', 'where should we focus'. One call is enough; do not re-run the analyses."),
     "parameters": {"type": "object", "properties": {}, "required": []}}})
+
+
+TOOL_SPECS.append(_fn(
+    "chr_anomalies",
+    "Check whether CHR activity is unusual or out of the ordinary, including natural "
+    "questions like 'anything strange this week?' or 'are no-shows higher than normal?'. "
+    "Compare equivalent weeks in prior years of the SAME academic term. For 'this week', "
+    "'recently', or unspecified dates use scope=latest_completed and omit term/year; "
+    "the current incomplete week is never assessed. For an explicit season/year use "
+    "scope=all_weeks. Omit service_line for an all-services aggregate and omit metric "
+    "to examine all four metrics. Weekly cancellation and no-show rate flags use "
+    "Benjamini-Hochberg adjusted tests; volume and practitioner count flags are "
+    "operational screening alerts, NOT statistical significance tests. Volume and "
+    "practitioner counts are compared after allowing for how busy the term is overall "
+    "against earlier years: overall_level gives that level (percent_vs_earlier_years). "
+    "Report the overall level first when it is notable, then the weeks that stand out "
+    "from it; a term that is busier throughout is one finding, not many unusual weeks.",
+    {"term": {"type": "string", "enum": ["Winter", "Summer", "Fall"],
+              "description": "Optional academic term; omit with year for latest data."},
+     "year": {"type": "integer", "description": "Optional; omit with term for latest data."},
+     "service_line": {"type": "string", "description": "Optional CHR service; omit for combined services."},
+     "metric": {"type": "string", "enum": ["appointment_volume", "cancellation_rate", "no_show_rate", "active_practitioners"],
+                "description": "Optional; omit to scan all four metrics."},
+     "scope": {"type": "string", "enum": ["all_weeks", "latest_completed"],
+               "description": "Use latest_completed for 'this week' or 'recently'; all_weeks for explicit terms."}},
+    []))
 
 
 TOOL_SPECS.append({"type": "function", "function": {

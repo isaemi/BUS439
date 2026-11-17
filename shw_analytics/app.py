@@ -11,6 +11,7 @@ from shw_analytics import (agent, analysis, bert_gate, briefing, charts, config,
 st.set_page_config(page_title="Student Feedback Assistant | UBC Student Health and Wellbeing", layout="wide")
 @st.cache_resource(show_spinner="Loading the question checker...")
 def _gate_index():
+    bert_gate.warm_up()
     return bert_gate.build_column_index(analysis.connect())
 st.markdown(theme.app_css(), unsafe_allow_html=True)
 st.markdown(theme.header_html(
@@ -93,6 +94,8 @@ if not config.DB_PATH.exists():
     st.warning("No data yet. Add a Qualtrics export in the sidebar, or run "
                "`python -m shw_analytics.ingest data/exports`.")
     st.stop()
+
+_gate_index() 
 
 brief_tab, ask_tab, dash_tab, comments_tab = st.tabs(["Briefing", "Ask a question", "Dashboards", "Comments"])
 

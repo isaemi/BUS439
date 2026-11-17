@@ -44,6 +44,10 @@ def _embedder():
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer(EMBED_MODEL)
 
+def warm_up():
+    """Load both models now and run one dummy pass, so the first real question is fast."""
+    _injection_clf()("warm up")
+    _embedder().encode(["warm up"], normalize_embeddings=True)
 
 def check_injection(question: str) -> tuple[bool, str]:
     """Returns (is_attack, reason)."""
